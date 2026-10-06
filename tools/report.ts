@@ -12,6 +12,10 @@ export interface MatchStats {
   /** Passes caught by the passing team. */
   completions: number;
   interceptions: number;
+  /** Body checks that landed, how many knocked the ball loose, and board slams. */
+  checks: number;
+  checksLoosened: number;
+  boardSlams: number;
   possessionChanges: number;
   /** Successful and failed scoops of loose balls. */
   scoops: number;
@@ -47,6 +51,9 @@ const SUMMED_KEYS = [
   'passes',
   'completions',
   'interceptions',
+  'checks',
+  'checksLoosened',
+  'boardSlams',
   'possessionChanges',
   'scoops',
   'scoopMisses',
@@ -157,6 +164,7 @@ export function formatReport(
     `  shots per goal              ${report.goals > 0 ? (report.shots / report.goals).toFixed(2) : 'n/a'}  (shooting ${pct(report.goals, report.shots)})`,
     `  saves / blocks / posts      ${perGame(report.saves)} / ${perGame(report.blocks)} / ${perGame(report.posts)} per game  (save rate ${pct(report.saves, report.saves + report.goals)})`,
     `  passes per game             ${perGame(report.passes)}  (completed ${pct(report.completions, report.passes)}, intercepted ${pct(report.interceptions, report.passes)})`,
+    `  checks per game             ${perGame(report.checks)}  (ball loosened ${pct(report.checksLoosened, report.checks)}, board slams ${perGame(report.boardSlams)})`,
     `  possession changes / game   ${perGame(report.possessionChanges)}`,
     `  scoops / game               ${perGame(report.scoops)}  (success ${pct(report.scoops, report.scoops + report.scoopMisses)})`,
     `  home / away / tied          ${report.homeWins} / ${report.awayWins} / ${report.ties}` +

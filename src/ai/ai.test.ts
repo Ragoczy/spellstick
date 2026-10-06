@@ -3,17 +3,21 @@ import {
   arenaGeometry,
   createMatch,
   makeConfig,
+  matchRoster,
   practiceRoster,
   stepMatch,
   type InputCommand,
   type MatchState,
   type SimConfig,
 } from '../sim';
-import { createGoalieAI, DEFAULT_GOALIE_SKILL } from './goalie';
+import { createGoalieAI } from './goalie';
+import { defensiveAssignments } from './tactics';
 import { createTeamControllers } from './team';
 
 const config = makeConfig();
 const goal = arenaGeometry(config).goals[1];
+const level = config.ai.levels.normal;
+const secs = (s: number) => Math.round(s * config.tickHz);
 
 /** A shooter (id 0) vs the AI goalie (id 1). */
 function shooterVsGoalie(shooterPos: { x: number; y: number }, seed: number) {
@@ -22,7 +26,7 @@ function shooterVsGoalie(shooterPos: { x: number; y: number }, seed: number) {
     { team: 1, number: 1, pos: { x: goal.mouth.x - 1, y: 0 }, role: 'goalie' },
   ]);
   state.ball.carrier = 0;
-  return { state, goalie: createGoalieAI(config) };
+  return { state, goalie: createGoalieAI(config, level) };
 }
 
 function step(state: MatchState, shooter: InputCommand, goalieAI: ReturnType<typeof createGoalieAI>) {
@@ -60,7 +64,7 @@ describe('AI goalie', () => {
     const y0 = state.players[1]!.pos.y;
     for (let i = 0; i < 50; i++) step(state, { move: { x: 0, y: 0 }, aim, primary: true }, goalie);
     step(state, { move: { x: 0, y: 0 }, aim }, goalie);
-    for (let i = 0; i < DEFAULT_GOALIE_SKILL.reactionTicks + 6 && state.ball.flight; i++) {
+    for (let i = 0; i < secs(level.goalieReactionSeconds) + 6 && state.ball.flight; i++) {
       step(state, { move: { x: 0, y: 0 }, aim }, goalie);
     }
     // The shot is heading for +y; the goalie should have shifted that way.
@@ -71,7 +75,7 @@ describe('AI goalie', () => {
     const { state, goalie } = shooterVsGoalie({ x: 0, y: 0 }, 1);
     state.ball.carrier = 1;
     let released = false;
-    for (let i = 0; i < DEFAULT_GOALIE_SKILL.holdTicks + 5; i++) {
+    for (let i = 0; i < secs(config.ai.goalie.holdSeconds) + 5; i++) {
       step(state, { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } }, goalie);
       if (state.ball.carrier !== 1) released = true;
     }
@@ -117,5 +121,40 @@ describe('practice drill (2v0 + goalie)', () => {
     }
     expect(goals).toBeGreaterThan(3);
     expect(passes).toBeGreaterThan(0);
+  });
+});
+
+describe('team AI (5v5)', () => {
+  it('the defender nearest the carrier picks them up, and marks stay one-to-one', () => {
+    const cfg = makeConfig();
+    const state = createMatch(cfg, 1, matchRoster(cfg));
+    // Hand the ball to an away runner standing right next to a home attacker.
+    const carrier = state.players.find((p) => p.team === 1 && p.role === 'runner')!;
+    const nearest = state.players.find((p) => p.team === 0 && p.role === 'runner' && p.lean === 'attack')!;
+    carrier.pos = { x: nearest.pos.x + 1, y: nearest.pos.y };
+    state.ball.carrier = carrier.id;
+    const marks = defensiveAssignments(state, 0);
+    expect(marks.get(nearest.id)).toBe(carrier.id);
+    expect(new Set(marks.values()).size).toBe(marks.size);
+  });
+
+  it('difficulty matters: hard beats easy most of the time', () => {
+    const cfg = makeConfig({ match: { periods: 1, periodSeconds: 150 } });
+    let hardWins = 0;
+    let easyWins = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const state = createMatch(cfg, seed, matchRoster(cfg));
+      const ais = createTeamControllers(state, cfg, seed, ['hard', 'easy']);
+      while (state.phase !== 'final') {
+        stepMatch(
+          state,
+          state.players.map((p) => ais[p.id]!.decide(state, p.id)),
+          cfg,
+        );
+      }
+      if (state.score[0] > state.score[1]) hardWins++;
+      if (state.score[1] > state.score[0]) easyWins++;
+    }
+    expect(hardWins).toBeGreaterThan(easyWins * 2);
   });
 });

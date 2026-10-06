@@ -292,7 +292,7 @@ function takePossession(state: MatchState, p: Player): void {
  * The candidate with the smallest distance (at most `maxDist`). Exact ties are broken with
  * the seeded RNG; picking by id would hand mirrored races to the same team every time.
  */
-function nearestWithFairTies(
+export function nearestWithFairTies(
   state: MatchState,
   candidates: Player[],
   distance: (p: Player) => number,

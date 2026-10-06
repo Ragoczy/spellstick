@@ -10,7 +10,7 @@ import {
   FixedStepper,
   makeConfig,
   periodSecondsLeft,
-  practiceRoster,
+  matchRoster,
   stepMatch,
   stickHead,
   tickSeconds,
@@ -63,6 +63,7 @@ export class MatchScene extends Phaser.Scene {
     const arena = arenaGeometry(this.config);
     this.view = new WorldView(arena);
     this.input_ = new HumanInput(this, this.view);
+    this.input_.onSwitch = () => this.switchPlayer();
     const home = TEAMS[DEFAULT_HOME];
     const away = TEAMS[DEFAULT_AWAY];
     this.colors = [home.color, away.color];
@@ -112,7 +113,7 @@ export class MatchScene extends Phaser.Scene {
   private startMatch(): void {
     for (const v of this.playerViews) v.destroy();
     this.ballView?.destroy();
-    this.state = createMatch(this.config, this.matchSeed, practiceRoster(this.config));
+    this.state = createMatch(this.config, this.matchSeed, matchRoster(this.config));
     this.controllers = createTeamControllers(this.state, this.config, this.matchSeed);
     this.matchSeed++;
     this.controlledId = this.state.players.findIndex((p) => p.team === HUMAN_TEAM && p.role === 'runner');
@@ -144,7 +145,12 @@ export class MatchScene extends Phaser.Scene {
     }
     stepMatch(this.state, inputs, this.config);
     this.input_.consumePresses();
-    for (const e of this.state.events) this.eventCounts[e.type] = (this.eventCounts[e.type] ?? 0) + 1;
+    for (const e of this.state.events) {
+      this.eventCounts[e.type] = (this.eventCounts[e.type] ?? 0) + 1;
+      if (e.type === 'check') this.hitFlash(this.state.players[e.targetId]!.pos, e.loosened);
+      if (e.type === 'checkBounce') this.hitFlash(this.state.players[e.playerId]!.pos, false);
+      if (e.type === 'boardSlam') this.cameras.main.shake(120, 0.004);
+    }
 
     // Control follows the ball when our team gets it (SPEC §5).
     const carrier =
@@ -152,6 +158,34 @@ export class MatchScene extends Phaser.Scene {
     if (carrier && carrier.team === HUMAN_TEAM && carrier.role === 'runner') this.controlledId = carrier.id;
 
     if (this.state.phase === 'final') this.startMatch(); // practice: go again
+  }
+
+  /**
+   * Space (SPEC §5): on defense, take over the teammate nearest the ball. If that's
+   * already you, go to the next nearest. On offense control follows the ball anyway.
+   */
+  private switchPlayer(): void {
+    const s = this.state;
+    const carrier = s.ball.carrier !== null ? s.players[s.ball.carrier] : undefined;
+    if (carrier && carrier.team === HUMAN_TEAM) return;
+    const mates = s.players
+      .filter((p) => p.team === HUMAN_TEAM && p.role === 'runner')
+      .sort(
+        (a, b) =>
+          Math.hypot(a.pos.x - s.ball.pos.x, a.pos.y - s.ball.pos.y) -
+            Math.hypot(b.pos.x - s.ball.pos.x, b.pos.y - s.ball.pos.y) || a.id - b.id,
+      );
+    const next = mates[0]?.id === this.controlledId ? mates[1] : mates[0];
+    if (next) this.controlledId = next.id;
+  }
+
+  /** A quick expanding ring where a check lands; gold if it knocked the ball loose. */
+  private hitFlash(pos: { x: number; y: number }, loosened: boolean): void {
+    const ring = this.add
+      .circle(this.view.x(pos.x), this.view.y(pos.y), this.view.len(0.7))
+      .setStrokeStyle(3, loosened ? PALETTE.mana : PALETTE.text, 0.9)
+      .setDepth(20);
+    this.tweens.add({ targets: ring, scale: 2, alpha: 0, duration: 250, onComplete: () => ring.destroy() });
   }
 
   override update(_time: number, deltaMs: number): void {
@@ -174,6 +208,8 @@ export class MatchScene extends Phaser.Scene {
         controlled: i === this.controlledId,
         charge: s.ball.carrier === p.id ? chargeFraction(p.primaryTicks, this.config) : 0,
         passTarget: i === passTargetId,
+        staggered: p.staggerTicks > 0,
+        checkReady: p.checkCooldown === 0,
       });
     });
     this.ballView.update(lerp(this.prev.ball.x, s.ball.pos.x), lerp(this.prev.ball.y, s.ball.pos.y), s.ball);

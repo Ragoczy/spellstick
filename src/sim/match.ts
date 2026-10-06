@@ -1,6 +1,7 @@
 import { handleActions, isCharging, secondsToTicks } from './actions';
 import { arenaFor } from './arena';
 import { tryScoop, updateBall } from './ball';
+import { resolveChecks, startCheck, stagger } from './checks';
 import type { SimConfig } from './config';
 import { movePlayer, separatePlayers, steer, updateFacing } from './players';
 import { createRng } from './rng';
@@ -36,6 +37,12 @@ export function createMatch(
       stickCooldown: 0,
       primaryTicks: 0,
       primaryDown: false,
+      lean: r.lean ?? 'attack',
+      checkCooldown: 0,
+      dashTicks: 0,
+      dashDir: { x: 0, y: 0 },
+      dashHit: false,
+      staggerTicks: 0,
     })),
     events: [],
   };
@@ -74,12 +81,32 @@ export function stepMatch(
 
   for (const p of state.players) {
     if (p.stickCooldown > 0) p.stickCooldown--;
+    if (p.checkCooldown > 0) p.checkCooldown--;
     const input = inputs[p.id] ?? NO_INPUT;
+    if (p.staggerTicks > 0) {
+      // Staggered: no control. Track the button so releasing it later isn't read as a new press.
+      p.staggerTicks--;
+      p.primaryDown = input.primary === true;
+      steer(p, NO_INPUT, 1, config, dt);
+      continue;
+    }
     updateFacing(p, input);
     handleActions(state, p, input, config);
-    steer(p, input, speedMultiplier(state, p, config), config, dt);
+    startCheck(p, input, config);
+    if (p.dashTicks > 0) {
+      p.vel = { x: p.dashDir.x * config.check.dashSpeed, y: p.dashDir.y * config.check.dashSpeed };
+    } else {
+      steer(p, input, speedMultiplier(state, p, config), config, dt);
+    }
   }
-  for (const p of state.players) movePlayer(p, arena, config, dt);
+  for (const p of state.players) {
+    const impact = movePlayer(p, arena, config, dt);
+    if (p.staggerTicks > 0 && impact > config.check.boardSlamSpeed) {
+      stagger(p, p.staggerTicks + secondsToTicks(config.check.boardSlamExtraSeconds, config));
+      state.events.push({ type: 'boardSlam', playerId: p.id, speed: impact });
+    }
+  }
+  resolveChecks(state, arena, config);
   separatePlayers(state.players, arena, config);
   updateBall(state, arena, config, dt);
   if (state.phase !== 'live') return; // a goal was scored; the clock stops
@@ -100,6 +127,9 @@ export function resetPositions(state: MatchState): void {
     p.facing = p.team === 0 ? 0 : Math.PI;
     p.stickCooldown = 0;
     p.primaryTicks = 0;
+    p.checkCooldown = 0;
+    p.dashTicks = 0;
+    p.staggerTicks = 0;
   }
   state.ball = { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, carrier: null, flight: null, lastTouch: null };
 }

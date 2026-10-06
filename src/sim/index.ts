@@ -4,6 +4,7 @@ export * from './types';
 export * from './match';
 export * from './actions';
 export * from './ball';
+export * from './checks';
 export * from './players';
 export * from './physics';
 export * from './roster';

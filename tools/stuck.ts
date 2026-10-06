@@ -7,6 +7,8 @@ import type { MatchState, SimConfig, Vec2 } from '../src/sim';
  */
 export class StuckTracker {
   incidents = 0;
+  /** Ids flagged on the most recent observe() call, for debugging. */
+  flagged: number[] = [];
   private anchors: Vec2[] = [];
   private since: number[] = [];
 
@@ -15,6 +17,7 @@ export class StuckTracker {
   observe(state: Readonly<MatchState>): void {
     const { stuckSeconds, stuckRadius } = this.config.diagnostics;
     const limit = Math.round(stuckSeconds * this.config.tickHz);
+    this.flagged = [];
     for (const p of state.players) {
       if (p.role === 'goalie') continue;
       const anchor = this.anchors[p.id];
@@ -26,6 +29,7 @@ export class StuckTracker {
         this.reset(p.id, p.pos, state.tick);
       } else if (state.tick - (this.since[p.id] ?? state.tick) > limit) {
         this.incidents++;
+        this.flagged.push(p.id);
         this.reset(p.id, p.pos, state.tick);
       }
     }

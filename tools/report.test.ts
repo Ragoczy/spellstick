@@ -11,7 +11,18 @@ describe('headless sim runner', () => {
     expect(stats.ticks).toBeGreaterThanOrEqual(4 * 5 * 60);
   });
 
-  it('AI duel picks up the ball and nobody gets stuck', () => {
+  it('a full 5v5 match has goals, hits, turnovers, and no stuck players', () => {
+    for (const seed of [1, 2]) {
+      const stats = runMatch(makeConfig(), seed);
+      expect(stats.score[0] + stats.score[1]).toBeGreaterThan(0);
+      expect(stats.checks).toBeGreaterThan(20);
+      expect(stats.possessionChanges).toBeGreaterThan(10);
+      expect(stats.shots).toBeGreaterThan(10);
+      expect(stats.stuckPlayerIncidents).toBe(0);
+    }
+  });
+
+  it('AI teams pick up the ball and nobody gets stuck in short games', () => {
     for (const seed of [1, 2, 3]) {
       const stats = runMatch(makeConfig({ match: { periodSeconds: 30 } }), seed);
       expect(stats.scoops).toBeGreaterThanOrEqual(1);

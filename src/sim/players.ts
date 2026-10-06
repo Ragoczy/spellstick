@@ -51,20 +51,22 @@ export function steer(
   p.vel.y += dvy * k;
 }
 
-export function movePlayer(p: Player, arena: ArenaGeometry, config: SimConfig, dt: number): void {
+/** Moves a player one tick and keeps them in bounds. Returns how hard they hit the boards (m/s). */
+export function movePlayer(p: Player, arena: ArenaGeometry, config: SimConfig, dt: number): number {
   p.pos.x += p.vel.x * dt;
   p.pos.y += p.vel.y * dt;
-  keepPlayerInBounds(p, arena, config);
+  return keepPlayerInBounds(p, arena, config);
 }
 
-function keepPlayerInBounds(p: Player, arena: ArenaGeometry, config: SimConfig): void {
+function keepPlayerInBounds(p: Player, arena: ArenaGeometry, config: SimConfig): number {
   const radius = config.player.radius;
   const board = boardContact(p.pos, radius, arena);
-  if (board) resolveContact(p.pos, p.vel, board, config.player.boardRestitution);
+  const impact = board ? resolveContact(p.pos, p.vel, board, config.player.boardRestitution) : 0;
   for (const goal of arena.goals) {
     const c = boxContact(p.pos, radius, goalBox(goal));
     if (c) resolveContact(p.pos, p.vel, c, 0);
   }
+  return impact;
 }
 
 /** Pushes overlapping players apart and cancels their closing speed. */
@@ -76,8 +78,8 @@ export function separatePlayers(players: Player[], arena: ArenaGeometry, config:
       const b = players[j]!;
       let dx = b.pos.x - a.pos.x;
       let dy = b.pos.y - a.pos.y;
+      if (dx * dx + dy * dy >= minDist * minDist) continue;
       let d = Math.hypot(dx, dy);
-      if (d >= minDist) continue;
       if (d < 1e-6) {
         // Exactly stacked: split along x, deterministically by id.
         dx = 1;

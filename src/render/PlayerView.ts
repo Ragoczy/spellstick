@@ -14,6 +14,10 @@ export interface PlayerDrawState {
   charge: number;
   /** This teammate would get assist magnetism if you passed now. */
   passTarget: boolean;
+  /** Knocked silly by a check: no control for a moment. */
+  staggered: boolean;
+  /** Body check is off cooldown (shown on the controlled player's marker). */
+  checkReady: boolean;
 }
 
 /** Placeholder art for one player: colored disc, stick line, jersey number. Sprite-swappable later. */
@@ -79,9 +83,19 @@ export class PlayerView {
       this.fx.strokeCircle(sx, sy, r + 6);
     }
 
-    this.body.setPosition(sx, sy);
+    if (s.staggered) {
+      // Little orbiting stars: dazed.
+      const t = this.body.scene.time.now / 120;
+      this.fx.fillStyle(0xfff3b0, 0.95);
+      for (let k = 0; k < 3; k++) {
+        const a = t + (k * 2 * Math.PI) / 3;
+        this.fx.fillCircle(sx + Math.cos(a) * (r + 4), sy - r * 0.6 + Math.sin(a) * 4, 2.5);
+      }
+    }
+
+    this.body.setPosition(sx, sy).setAlpha(s.staggered ? 0.65 : 1);
     this.label.setPosition(sx, sy);
-    this.marker.setVisible(s.controlled);
+    this.marker.setVisible(s.controlled).setFillStyle(s.checkReady ? PALETTE.text : 0x6b6f7a);
     if (s.controlled) this.marker.setPosition(sx, sy - r - 12);
   }
 

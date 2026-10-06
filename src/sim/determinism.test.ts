@@ -14,6 +14,7 @@ function scriptedInputs(tick: number, playerId: number): InputCommand {
     debugDrop: tick % 97 === playerId * 13,
     // Taps (passes) and long holds (shots) on different rhythms.
     primary: tick % 151 < (playerId === 0 ? 3 : 40),
+    check: tick % 83 === playerId * 11,
   };
 }
 

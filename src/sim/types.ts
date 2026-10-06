@@ -18,6 +18,8 @@ export interface InputCommand {
    * a short press is a pass on release; a longer hold charges a shot, fired on release.
    */
   primary?: boolean;
+  /** Edge-triggered: throw a body check (a short dash in the move direction). */
+  check?: boolean;
   /** Debug, edge-triggered: drop the ball at your feet. */
   debugDrop?: boolean;
 }
@@ -54,10 +56,14 @@ export interface Ball {
 
 export type Role = 'runner' | 'goalie';
 
+/** Where a runner prefers to play (SPEC §3). Only biases AI positioning. */
+export type Lean = 'attack' | 'defense';
+
 export interface Player {
   id: number;
   team: TeamIndex;
   role: Role;
+  lean: Lean;
   /** Jersey number, for display. */
   number: number;
   /** Start position; play resets here after a goal. */
@@ -72,6 +78,14 @@ export interface Player {
   primaryTicks: number;
   /** Whether the button was down last tick (to detect fresh presses). */
   primaryDown: boolean;
+  /** Ticks until this player can check again. */
+  checkCooldown: number;
+  /** Ticks left in the current check dash (0 = not dashing), its direction, and whether it has hit someone. */
+  dashTicks: number;
+  dashDir: Vec2;
+  dashHit: boolean;
+  /** Ticks left staggered from a hit: no control, no stick. */
+  staggerTicks: number;
 }
 
 /** Where a player starts. Player ids are their index in the roster. */
@@ -80,6 +94,7 @@ export interface RosterEntry {
   number: number;
   pos: Vec2;
   role?: Role;
+  lean?: Lean;
 }
 
 /** `goalPause`: dead ball after a goal; the clock and players are frozen. */
@@ -100,6 +115,9 @@ export type SimEvent =
   | { type: 'block'; playerId: number; team: TeamIndex }
   | { type: 'post'; team: TeamIndex }
   | { type: 'goal'; team: TeamIndex; scorer: number | null }
+  | { type: 'check'; playerId: number; targetId: number; team: TeamIndex; loosened: boolean }
+  | { type: 'checkBounce'; playerId: number; goalieId: number }
+  | { type: 'boardSlam'; playerId: number; speed: number }
   | { type: 'restart' }
   | { type: 'ballBoards'; speed: number };
 

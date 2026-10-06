@@ -15,6 +15,9 @@ export class HumanInput {
   private readonly keys: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private pendingDrop = false;
   private pendingPrimary = false;
+  private pendingCheck = false;
+  /** Called when the player presses the switch key (Space). Control switching is a UI concern, not a sim rule. */
+  onSwitch: () => void = () => {};
   private pointerSeen = false;
 
   constructor(
@@ -24,11 +27,14 @@ export class HumanInput {
     const kb = scene.input.keyboard!;
     this.keys = kb.addKeys('W,A,S,D') as HumanInput['keys'];
     kb.on('keydown-G', () => (this.pendingDrop = true));
+    kb.on('keydown-SPACE', () => this.onSwitch());
+    kb.addCapture('SPACE');
     scene.input.mouse?.disableContextMenu();
     scene.input.on('pointermove', () => (this.pointerSeen = true));
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.pointerSeen = true;
       if (pointer.leftButtonDown()) this.pendingPrimary = true;
+      if (pointer.rightButtonDown()) this.pendingCheck = true;
     });
   }
 
@@ -41,12 +47,13 @@ export class HumanInput {
     const pointer = this.scene.input.activePointer;
     const aim = this.pointerSeen ? this.view.toWorld(pointer.x, pointer.y) : fallbackAim;
     const primary = this.pendingPrimary || pointer.leftButtonDown();
-    return { move, aim, primary, debugDrop: this.pendingDrop };
+    return { move, aim, primary, check: this.pendingCheck, debugDrop: this.pendingDrop };
   }
 
   /** Call after a sim tick consumed the command, so presses fire once. */
   consumePresses(): void {
     this.pendingDrop = false;
     this.pendingPrimary = false;
+    this.pendingCheck = false;
   }
 }

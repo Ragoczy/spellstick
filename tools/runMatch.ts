@@ -1,7 +1,7 @@
 import { createTeamControllers } from '../src/ai';
 import {
   createMatch,
-  scrimmageRoster,
+  matchRoster,
   stepMatch,
   type InputCommand,
   type SimConfig,
@@ -10,12 +10,9 @@ import {
 import { emptyMatchStats, type MatchStats } from './report';
 import { StuckTracker } from './stuck';
 
-/** Runners per side in the headless scrimmage until full teams arrive in M3. */
-export const SIM_RUNNERS_PER_SIDE = 2;
-
 /** Plays one headless AI-vs-AI match to the final whistle and returns its stats. */
 export function runMatch(config: SimConfig, seed: number): MatchStats {
-  const state = createMatch(config, seed, scrimmageRoster(config, SIM_RUNNERS_PER_SIDE));
+  const state = createMatch(config, seed, matchRoster(config));
   const controllers = createTeamControllers(state, config, seed);
   const stats = emptyMatchStats();
 
@@ -64,6 +61,13 @@ export function runMatch(config: SimConfig, seed: number): MatchStats {
           break;
         case 'post':
           stats.posts++;
+          break;
+        case 'check':
+          stats.checks++;
+          if (e.loosened) stats.checksLoosened++;
+          break;
+        case 'boardSlam':
+          stats.boardSlams++;
           break;
         case 'goal':
           possession = null;

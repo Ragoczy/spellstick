@@ -12,6 +12,6 @@ export const idleController: Controller = {
   decide: (_state, _playerId) => ({ move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } }),
 };
 
-export { createGoalieAI, DEFAULT_GOALIE_SKILL, type GoalieSkill } from './goalie';
-export { createRunnerAI, DEFAULT_RUNNER_SKILL, type RunnerSkill } from './runner';
+export { createGoalieAI } from './goalie';
+export { createRunnerAI } from './runner';
 export { createTeamControllers } from './team';

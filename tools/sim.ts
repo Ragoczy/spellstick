@@ -12,7 +12,7 @@ import { parseArgs } from 'node:util';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
 import { makeConfig } from '../src/sim';
 import { createReport, formatReport, mergeReports, recordMatch, type Report } from './report';
-import { runMatch, SIM_RUNNERS_PER_SIDE } from './runMatch';
+import { runMatch } from './runMatch';
 
 interface Job {
   seeds: number[];
@@ -71,7 +71,7 @@ if (!isMainThread) {
       games,
       baseSeed,
       elapsedMs,
-      setup: `${SIM_RUNNERS_PER_SIDE} runners + goalie per side, ${workers} worker${workers === 1 ? '' : 's'}`,
+      setup: `${makeConfig().teams.runnersPerSide} runners + goalie per side, ${workers} worker${workers === 1 ? '' : 's'}`,
     }),
   );
 }

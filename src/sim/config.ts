@@ -127,7 +127,7 @@ export const DEFAULT_CONFIG = {
     /** A shot stays in the air this long, then lands and rolls (s). */
     airSeconds: 1.4,
     /** Chance an opposing runner's body blocks a shot that hits them. */
-    blockChance: 0.6,
+    blockChance: 0.5,
     /** A blocked shot keeps this fraction of its speed. */
     blockSpeedKeep: 0.35,
   },
@@ -175,6 +175,135 @@ export const DEFAULT_CONFIG = {
     releaseCooldownSeconds: 0.6,
   },
 
+  /** Body checks (SPEC §4.5–4.6): right click dashes in the move direction. */
+  check: {
+    /** Dash speed (m/s) and duration (s). */
+    dashSpeed: 11,
+    dashSeconds: 0.18,
+    /** Time from one check to the next (s), counted from the start of the dash. */
+    cooldownSeconds: 1.4,
+    /** A dash hits an opponent whose center comes within two body radii plus this (m). */
+    reach: 0.3,
+    /** Speed added to the player who gets hit, along the dash direction (m/s). */
+    knockbackSpeed: 8,
+    /** How long a hit player loses control (s). */
+    staggerSeconds: 0.6,
+    /** Chance a hit on the ball carrier knocks the ball loose. */
+    looseChance: 0.4,
+    /** A knocked-loose ball pops out at this speed (m/s), scattered up to `looseScatterDeg`. */
+    looseSpeed: 5,
+    looseScatterDeg: 60,
+    /** Fraction of the dash speed the checker keeps after the hit. */
+    checkerKeep: 0.3,
+    /** A staggered player slammed into the boards faster than this (m/s)... */
+    boardSlamSpeed: 3,
+    /** ...is staggered this much longer (s). */
+    boardSlamExtraSeconds: 0.4,
+    /** Goalie protection: a checker bounces off a goalie in their crease at this speed (m/s)... */
+    goalieBounceSpeed: 5,
+    /** ...and is staggered this long (s). */
+    goalieBounceStaggerSeconds: 0.4,
+  },
+
+  /**
+   * AI tuning. `levels` are the difficulty presets (SPEC §7); the rest is shared behavior.
+   * Durations are in seconds, distances in meters.
+   */
+  ai: {
+    levels: {
+      easy: {
+        /** Defensive reaction lag: time to mostly catch up to an attacker's move. */
+        reactionSeconds: 0.3,
+        /** Random error in where the AI aims at the goal (m, either side). */
+        aimErrorM: 0.45,
+        /** Shoots from at most this far out. */
+        shootRange: 10,
+        /** A pass lane counts as open if no opponent is within this distance of it. */
+        passLaneClearance: 1.6,
+        /** Per-tick chance of throwing a check when one is available (higher vs a shooter winding up). */
+        checkChancePerTick: 0.002,
+        /** Goalie reaction time to a shot. */
+        goalieReactionSeconds: 0.22,
+      },
+      normal: {
+        reactionSeconds: 0.17,
+        aimErrorM: 0.25,
+        shootRange: 11,
+        passLaneClearance: 2.2,
+        checkChancePerTick: 0.004,
+        goalieReactionSeconds: 0.13,
+      },
+      hard: {
+        reactionSeconds: 0.1,
+        aimErrorM: 0.12,
+        shootRange: 12,
+        passLaneClearance: 2.4,
+        checkChancePerTick: 0.007,
+        goalieReactionSeconds: 0.08,
+      },
+    },
+    runner: {
+      /** Don't pass within this long of getting the ball (stops ping-pong). */
+      minHoldSeconds: 0.75,
+      /** Shots need this much clearance from opposing bodies beyond body + ball radius. */
+      shotLaneMargin: 0.2,
+      /** Shoot only when at least this far out from the goal line, and not wider than this ratio. */
+      minShotFront: 2.5,
+      maxShotAngleRatio: 1.6,
+      /** Aim this far inside the post. */
+      postInset: 0.3,
+      /** An opponent this close counts as pressure. */
+      pressureRadius: 2.2,
+      /** Slower than this while trying to move counts as blocked... */
+      blockedSpeed: 0.6,
+      /** ...for this long. */
+      blockedSeconds: 0.5,
+      /** Re-pick juke direction this often. */
+      jukeSeconds: 0.67,
+      /** In range without a look for this long: reset back out. */
+      inRangePatienceSeconds: 1.25,
+      /** A reset carries back out for this long. */
+      resetSeconds: 0.75,
+      /** A carrier within this radius for `noProgressSeconds` resets. */
+      noProgressRadius: 2.5,
+      noProgressSeconds: 1.5,
+      /** Gap kept from a marked attacker (goal-side), and from the carrier when pressuring. */
+      markGap: 2.5,
+      pressureGap: 1.6,
+      /** Defenders whose man is farther than this from goal sag toward the crease instead. */
+      sagDistance: 16,
+      /** Checks are thrown at opponents within this distance... */
+      checkRange: 2.0,
+      /** ...this many times as often at a carrier who is winding up a shot. */
+      checkWindupMultiplier: 4,
+      /** In range with the lane covered, chance per tick of shooting through traffic anyway. */
+      forceShotChancePerTick: 0.012,
+      /** Off-ball attackers drift around their spot this far (m) over about this long (s). */
+      driftLateral: 3.5,
+      driftDepth: 2,
+      driftSeconds: 4.5,
+      /** Off-ball attackers cut to the crease edge for this long, about this often. */
+      cutSeconds: 0.9,
+      cutEverySeconds: 4,
+      /** Off-ball attackers keep at least this far from their nearest defender if they can. */
+      getOpenRadius: 2.5,
+      /** Off the ball, keep at least this far from teammates (m). */
+      teammateSpacing: 2.2,
+      /** Look this far ahead (m) for a goal frame in the way, and slide around it. */
+      goalLookahead: 2.5,
+    },
+    goalie: {
+      /** Distance in front of the goal line the goalie patrols. */
+      arcRadius: 1.6,
+      /** Widest angle off straight-out the goalie follows the ball (radians). */
+      maxArcAngle: 1.25,
+      /** Leaves the crease for loose balls this close to the goal mouth. */
+      chaseLooseRange: 4.5,
+      /** Holds a caught ball this long before clearing. */
+      holdSeconds: 0.85,
+    },
+  },
+
   /** Health checks reported by the headless sim. */
   diagnostics: {
     /** A player within `stuckRadius` meters of one spot for longer than this, during live play, is "stuck". */
@@ -193,6 +322,10 @@ export const DEFAULT_CONFIG = {
 type Widen<T> = T extends number ? number : T extends object ? { -readonly [K in keyof T]: Widen<T[K]> } : T;
 
 export type SimConfig = Widen<typeof DEFAULT_CONFIG>;
+
+/** AI difficulty preset name (SPEC §7). */
+export type Difficulty = keyof SimConfig['ai']['levels'];
+export type AiLevel = SimConfig['ai']['levels'][Difficulty];
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 

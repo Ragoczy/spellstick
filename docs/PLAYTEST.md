@@ -1,31 +1,35 @@
-# Playtest notes — M0 (Scaffold)
+# Playtest notes — M1 (Movement and the ball)
 
 **Build:** https://ragoczy.github.io/spellstick/ (the git SHA is in the bottom-right corner)
 
 ## What changed
 
-- New project: Vite + TypeScript (strict) + Phaser 3, with Vitest, Playwright, ESLint, and Prettier.
-- The sim (`src/sim/`) is pure and deterministic: fixed 60 Hz timestep, seeded RNG, and lint rules plus a unit test that fail if it imports Phaser or calls `Math.random()`.
-- The browser runs the sim through a fixed-step loop, and Phaser draws the rink from sim geometry: boards, floor, center line and faceoff circle, both goals, and both creases (tinted in team colors: Wyverns crimson on the left, Ichthyocentaurs sea-teal on the right).
-- A placeholder header shows the period and game clock ticking down, which proves the loop is running.
-- `npm run sim -- --games 1000 --seed 1` runs 1,000 empty matches headless and prints the stats report. Everything is zero for now because there are no players yet; it warns that goals per game is out of range, which is expected until M3.
-- GitHub Actions lints, tests, runs a short sim, builds, runs the Playwright smoke test, and deploys to Pages on every push to `main`.
+- You control one Wyvern (#7, the white chevron above them). WASD moves with acceleration and a short glide when you let go. The stick follows your mouse.
+- The ball starts loose at center. Run over it to scoop it up automatically. Scoops can fail (more often when you hit the ball fast), and a miss knocks the ball a little way off your stick.
+- While carrying, the ball sits in your stick head and you run 8% slower.
+- Debug keys: **G** drops the ball at your feet; **T** tosses it toward the cursor at pass-like speed so you can test bounces. A loose ball moving fast glows gold.
+- The ball rolls, slows, and bounces off the boards (and off the goals, which are solid until scoring arrives in M2).
+- The headless sim now runs a 1v1 duel with a placeholder AI. 1,000 games: 0 stuck players, 70% scoop success. Goals are still 0, so the goals-per-game warning is expected.
 
 ## How to run
 
-- Play: open the build link above.
-- Local: `npm install`, then `npm run dev` and open the URL it prints.
+- Play: open the build link above. Click the page once if keys don't respond.
+- Local: `npm install`, then `npm run dev`.
 
 ## Things to try
 
-1. Open the link and check that the rink fills the window and stays centered when you resize the browser.
-2. Watch the clock under the title count down from 2:30.
-3. Look at the rink proportions: length vs width, the corner rounding, the goal size, and the crease size.
-4. Check that the team colors read clearly on the dark floor.
+1. Run in circles and figure eights. Stop suddenly. Change direction hard.
+2. Run straight into the boards and into a corner, with and without the ball.
+3. Pick up the ball, press **T** aiming at the side boards at a shallow angle, then at a steep angle, then into a corner.
+4. Toss the ball, chase it down, and scoop it while it's still rolling fast. Then try approaching a slow ball gently.
+5. Press **G** while sprinting and watch where the ball goes.
+6. Toss the ball at a goal from the front and from behind.
 
 ## Questions for you
 
-1. Do the rink proportions feel right for box lacrosse, or should it be shorter/wider? (Currently 60 × 28 m.)
-2. Is the goal (1.8 m mouth) and crease (3 m radius) about the size you picture? Goal size will matter a lot for scoring in M2.
-3. Any preference on the floor color? It's a dark green turf tone now; it could go to a lighter wood or a darker arcane look.
-4. Anything about the overall look you want changed before more gets built on it?
+1. Does movement feel too floaty, too twitchy, or about right? Is the top speed right for a rink this size? (It takes about 8 seconds to run end to end.)
+2. Does the stop-glide after releasing a key feel good, or should players stop dead?
+3. Do board bounces feel believable: too bouncy, too dead, or about right?
+4. Does a tossed ball roll too far, or die too quickly?
+5. Is the scoop failure rate fun (a bit of scramble) or just annoying?
+6. Are the players a readable size now (I made them a little bigger than life), and can you read the number?

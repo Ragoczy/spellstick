@@ -3,6 +3,7 @@ import { MatchScene } from './render/MatchScene';
 import { PALETTE } from './render/palette';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from './render/view';
 import { mountBuildTag } from './ui/buildTag';
+import { mountControlsHint } from './ui/controlsHint';
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -15,3 +16,4 @@ new Phaser.Game({
 });
 
 mountBuildTag();
+mountControlsHint('WASD move  ·  mouse aims the stick  ·  G drop ball  ·  T toss ball (debug keys)');

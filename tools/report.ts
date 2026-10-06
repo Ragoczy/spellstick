@@ -6,6 +6,9 @@ export interface MatchStats {
   score: [number, number];
   shots: number;
   possessionChanges: number;
+  /** Successful and failed scoops of loose balls. */
+  scoops: number;
+  scoopMisses: number;
   spellCasts: Record<string, number>;
   shotClockViolations: number;
   creaseViolations: number;
@@ -24,6 +27,8 @@ export interface Report {
   ties: number;
   shots: number;
   possessionChanges: number;
+  scoops: number;
+  scoopMisses: number;
   spellCasts: Record<string, number>;
   shotClockViolations: number;
   creaseViolations: number;
@@ -41,6 +46,8 @@ export function createReport(): Report {
     ties: 0,
     shots: 0,
     possessionChanges: 0,
+    scoops: 0,
+    scoopMisses: 0,
     spellCasts: {},
     shotClockViolations: 0,
     creaseViolations: 0,
@@ -58,6 +65,8 @@ export function recordMatch(report: Report, m: MatchStats): void {
   else report.ties++;
   report.shots += m.shots;
   report.possessionChanges += m.possessionChanges;
+  report.scoops += m.scoops;
+  report.scoopMisses += m.scoopMisses;
   for (const [spell, n] of Object.entries(m.spellCasts)) {
     report.spellCasts[spell] = (report.spellCasts[spell] ?? 0) + n;
   }
@@ -112,6 +121,7 @@ export function formatReport(
     `  goals per game              ${(report.goals / g).toFixed(2)}`,
     `  shots per goal              ${report.goals > 0 ? (report.shots / report.goals).toFixed(2) : 'n/a'}`,
     `  possession changes / game   ${(report.possessionChanges / g).toFixed(2)}`,
+    `  scoops / game               ${(report.scoops / g).toFixed(2)}  (success ${report.scoops + report.scoopMisses > 0 ? ((100 * report.scoops) / (report.scoops + report.scoopMisses)).toFixed(1) : 'n/a'}%)`,
     `  home / away / tied          ${report.homeWins} / ${report.awayWins} / ${report.ties}` +
       (decided > 0 ? `  (home win ${((100 * report.homeWins) / decided).toFixed(1)}%)` : ''),
     `  spell casts                 ${totalCasts}`,

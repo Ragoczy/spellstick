@@ -4,10 +4,18 @@ import { balanceWarnings, createReport, formatReport, recordMatch } from './repo
 import { runMatch } from './runMatch';
 
 describe('headless sim runner', () => {
-  it('runs an empty match to the final whistle', () => {
+  it('runs a match to the final whistle', () => {
     const config = makeConfig({ match: { periodSeconds: 5 } });
     const stats = runMatch(config, 1);
     expect(stats.ticks).toBe(4 * 5 * 60);
+  });
+
+  it('AI duel picks up the ball and nobody gets stuck', () => {
+    for (const seed of [1, 2, 3]) {
+      const stats = runMatch(makeConfig({ match: { periodSeconds: 30 } }), seed);
+      expect(stats.scoops).toBeGreaterThanOrEqual(1);
+      expect(stats.stuckPlayerIncidents).toBe(0);
+    }
   });
 
   it('aggregates and formats a report', () => {

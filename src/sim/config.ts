@@ -39,6 +39,71 @@ export const DEFAULT_CONFIG = {
     periods: 4,
     periodSeconds: 150,
   },
+
+  player: {
+    /** Body radius. */
+    radius: 0.6,
+    /** Top running speed. */
+    maxSpeed: 7.5,
+    /** Top speed multiplier while carrying the ball. */
+    carrySpeedMultiplier: 0.92,
+    /** How fast velocity moves toward the desired velocity while steering (m/s²). */
+    accel: 32,
+    /** How fast velocity bleeds off with no move input (m/s²). */
+    friction: 24,
+    /** Distance from body center to the stick head, where a carried ball sits. */
+    stickReach: 0.95,
+    /** Fraction of normal speed kept when a player runs into the boards (0 = dead stop). */
+    boardRestitution: 0.1,
+  },
+
+  ball: {
+    radius: 0.12,
+    /** Constant rolling deceleration for a loose ball (m/s²). */
+    rollingDecel: 2.5,
+    /** Extra speed-proportional drag for a loose ball (per second). */
+    drag: 0.35,
+    /** Loose balls slower than this stop dead. */
+    stopSpeed: 0.05,
+    /** Fraction of normal speed kept after hitting the boards. */
+    boardRestitution: 0.65,
+    /** Fraction of tangential speed kept after hitting the boards. */
+    boardTangentKeep: 0.9,
+    /** Fraction of normal speed kept after hitting the goal frame. */
+    goalRestitution: 0.5,
+  },
+
+  scoop: {
+    /** A loose ball within this distance of a player's center can be scooped. */
+    radius: 1.15,
+    /** Scoop success chance when the ball and player move at the same velocity. */
+    chanceSlow: 0.95,
+    /** Scoop success chance at or above `fastRelSpeed` relative speed. */
+    chanceFast: 0.55,
+    /** Relative speed (m/s) at which the scoop chance bottoms out. */
+    fastRelSpeed: 9,
+    /** After a failed scoop, the player waits this long before trying again (s). */
+    retrySeconds: 0.3,
+    /** A failed scoop knocks the ball away at this speed (m/s). */
+    fumbleSpeed: 2,
+    /** A player who just lost or released the ball can't scoop it for this long (s). */
+    releaseCooldownSeconds: 0.6,
+  },
+
+  /** Health checks reported by the headless sim. */
+  diagnostics: {
+    /** A player within `stuckRadius` meters of one spot for longer than this, during live play, is "stuck". */
+    stuckSeconds: 5,
+    stuckRadius: 1,
+  },
+
+  /** Debug-only actions for playtesting. */
+  debug: {
+    /** Speed added in the facing direction when dropping the ball (m/s). */
+    dropPush: 1,
+    /** Speed of the debug toss toward the cursor (m/s). */
+    tossSpeed: 14,
+  },
 } as const;
 
 /** Widen literal types so tests and tools can supply their own numbers. */

@@ -8,6 +8,7 @@ export const PALETTE = {
   goalFrame: 0xf2f2f2,
   goalNet: 0xcfd6e0,
   ball: 0xffffff,
+  stick: 0xd9cdb4,
   /** Canon mana glow (SPEC §2): golden orange. */
   mana: 0xffa630,
   text: 0xf2efe6,

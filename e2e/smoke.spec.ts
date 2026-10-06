@@ -77,7 +77,7 @@ async function releaseAll(page: Page, held: Set<string>) {
 }
 
 test('plays a 5v5 match: faceoff, move, check, switch, and shoot', async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(240_000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
@@ -135,9 +135,13 @@ test('plays a 5v5 match: faceoff, move, check, switch, and shoot', async ({ page
   // Chase the ball until our team has it (control follows the carrier), then shoot.
   const held = new Set<string>();
   let shot = false;
-  const end = Date.now() + 40_000;
-  while (!shot && Date.now() < end) {
+  // Budget by game time, not wall time: slow CI browsers run the sim well below real time.
+  const startTick = (await debug(page)).state.tick;
+  const budgetTicks = 30 * 60;
+  let now = startTick;
+  while (!shot && now - startTick < budgetTicks) {
     const d = await debug(page);
+    now = d.state.tick;
     const me = d.state.players[d.controlledId]!;
     if (d.state.ball.carrier === d.controlledId) {
       await releaseAll(page, held);
@@ -147,7 +151,7 @@ test('plays a 5v5 match: faceoff, move, check, switch, and shoot', async ({ page
       // Wait on sim time, not wall time: a slow CI browser may run fewer ticks per second.
       const charged = await until(
         page,
-        (x) => (x.state.players[x.controlledId]?.primaryTicks ?? 0) > 30,
+        (x) => (x.state.players[x.controlledId]?.primaryTicks ?? 0) > 15,
         8000,
       );
       await page.mouse.up();

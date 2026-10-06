@@ -1,18 +1,21 @@
 import Phaser from 'phaser';
 import type { ArenaGeometry } from '../sim';
 import { PALETTE } from './palette';
-import type { WorldView } from './view';
+import { CANVAS_HEIGHT, CANVAS_WIDTH, type WorldView } from './view';
 
 const BOARD_THICKNESS_M = 0.6;
 
-/** Draws the static rink: floor, boards, lines, creases, and goals. */
+/**
+ * Draws the static rink (floor, boards, lines, creases, goals) once into a texture and shows
+ * it as an image, so it isn't re-tessellated every frame.
+ */
 export function drawRink(
   scene: Phaser.Scene,
   arena: ArenaGeometry,
   view: WorldView,
   teamColors: [number, number],
-): Phaser.GameObjects.Graphics {
-  const g = scene.add.graphics();
+): Phaser.GameObjects.Image {
+  const g = scene.make.graphics({}, false);
   const w = view.len(arena.halfLength * 2);
   const h = view.len(arena.halfWidth * 2);
   const left = view.x(-arena.halfLength);
@@ -69,5 +72,8 @@ export function drawRink(
     g.lineBetween(cx, topY, cx, botY);
   }
 
-  return g;
+  const key = `rink-${teamColors[0]}-${teamColors[1]}`;
+  if (!scene.textures.exists(key)) g.generateTexture(key, CANVAS_WIDTH, CANVAS_HEIGHT);
+  g.destroy();
+  return scene.add.image(0, 0, key).setOrigin(0, 0);
 }

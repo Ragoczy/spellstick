@@ -26,6 +26,7 @@ export class Hud {
   private readonly overlayHint: Phaser.GameObjects.Text;
   private bannerUntil = 0;
   private subUntil = 0;
+  private shotKey = '';
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -122,10 +123,16 @@ export class Hud {
     this.shotText.setVisible(showShot);
     if (showShot && sc.team !== null) {
       const secs = Math.ceil(sc.ticksLeft / this.config.tickHz);
-      this.shotText
-        .setText(`${TEXT.shotClock} ${secs}`)
-        .setColor(secs <= SHOT_CLOCK_WARN_SECONDS ? '#ff5a4f' : toCss(PALETTE.text));
-      this.shotBox.setStrokeStyle(2, this.teams[sc.team].color, 1);
+      // Only touch the text when it changes: restyling a Text re-rasterizes it, which is
+      // costly every frame on software-rendered browsers.
+      const key = `${secs}|${sc.team}`;
+      if (key !== this.shotKey) {
+        this.shotKey = key;
+        this.shotText
+          .setText(`${TEXT.shotClock} ${secs}`)
+          .setColor(secs <= SHOT_CLOCK_WARN_SECONDS ? '#ff5a4f' : toCss(PALETTE.text));
+        this.shotBox.setStrokeStyle(2, this.teams[sc.team].color, 1);
+      }
     }
 
     const scoreLine = `${this.teams[0].name} ${s.score[0]}  –  ${s.score[1]} ${this.teams[1].name}`;

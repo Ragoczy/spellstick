@@ -88,6 +88,12 @@ export function runMatch(config: SimConfig, seed: number): MatchStats {
           stats.goalsDisallowed++;
           gain(e.team === 0 ? 1 : 0);
           break;
+        case 'cast':
+          stats.spellCasts[e.spell] = (stats.spellCasts[e.spell] ?? 0) + 1;
+          break;
+        case 'wardBlock':
+          stats.wardBlocks++;
+          break;
         case 'periodStart':
           if (e.overtime) stats.overtimeGames = 1;
           break;

@@ -12,6 +12,7 @@ import {
 } from './physics';
 import { stickHead } from './players';
 import { attackerInCrease, turnOver } from './possession';
+import { wardBlocks } from './spells';
 import { chance, nextFloat, nextRange } from './rng';
 import type { Flight, MatchState, Player } from './types';
 import { degToRad, rotate, type Vec2 } from './vec';
@@ -38,6 +39,7 @@ export function updateBall(state: MatchState, arena: ArenaGeometry, config: SimC
   const flight = ball.flight;
   if (flight) {
     if (flight.kind === 'pass' && flight.target !== null) homeTowardReceiver(state, flight, config, dt);
+    if (flight.spin !== 0) ball.vel = rotate(ball.vel, flight.spin * dt); // Bent Shot
     const speed = Math.hypot(ball.vel.x, ball.vel.y);
     const k = Math.max(0, 1 - bc.airDrag * dt);
     ball.vel.x *= k;
@@ -69,7 +71,7 @@ export function updateBall(state: MatchState, arena: ArenaGeometry, config: SimC
 
     for (const goal of arena.goals) {
       if (crossedGoalLine(prev, ball.pos, goal)) {
-        scoreGoal(state, goal, arena, config);
+        if (!wardBlocks(state, goal, config)) scoreGoal(state, goal, arena, config);
         return;
       }
     }
@@ -222,7 +224,8 @@ function resolveShot(state: MatchState, flight: Flight, prev: Vec2, config: SimC
         speed > 1e-6
           ? Math.abs((p.pos.x - ball.pos.x) * ball.vel.y - (p.pos.y - ball.pos.y) * ball.vel.x) / speed
           : d;
-      if (!chance(state.rng, saveChance(p, offset, speed, flight.from, config))) continue;
+      const bend = flight.spin !== 0 ? config.spells.bentShot.savePenalty : 0;
+      if (!chance(state.rng, saveChance(p, offset, speed, flight.from, config) - bend)) continue;
       if (chance(state.rng, config.goalie.catchFraction)) {
         takePossession(state, p);
         state.events.push({ type: 'save', playerId: p.id, team: p.team, caught: true });

@@ -4,6 +4,12 @@ import type { Vec2 } from './vec';
 
 export type { TeamIndex } from './arena';
 
+/** Spell ids (SPEC §6). Display names live in src/content/spells.ts. */
+export type SpellId = 'hexShove' | 'quickstep' | 'bentShot' | 'ward';
+
+/** Runner spells in key order: Q, E, R. */
+export const RUNNER_SPELLS = ['hexShove', 'quickstep', 'bentShot'] as const satisfies readonly SpellId[];
+
 /**
  * What one controller (human or AI) asks one player to do this tick. The AI produces
  * exactly these commands too; it never edits sim state directly.
@@ -20,6 +26,8 @@ export interface InputCommand {
   primary?: boolean;
   /** Edge-triggered: throw a body check (a short dash in the move direction). */
   check?: boolean;
+  /** Edge-triggered: cast this spell. */
+  cast?: SpellId;
   /** Debug, edge-triggered: drop the ball at your feet. */
   debugDrop?: boolean;
 }
@@ -42,6 +50,8 @@ export interface Flight {
   maxTicks: number;
   /** Where it was released (goalie reaction time scales with distance). */
   from: Vec2;
+  /** Bent Shot: how fast the flight direction turns (radians per second, signed); 0 = straight. */
+  spin: number;
 }
 
 export interface Ball {
@@ -86,6 +96,16 @@ export interface Player {
   dashHit: boolean;
   /** Ticks left staggered from a hit: no control, no stick. */
   staggerTicks: number;
+  /** Runner mana (SPEC §6). Goalies don't use it. */
+  mana: number;
+  /** Ticks until each spell can be cast again. */
+  spellCooldowns: Record<SpellId, number>;
+  /** Ticks of Quickstep left. */
+  quickstepTicks: number;
+  /** Bent Shot is armed: the next shot bends. */
+  bentArmed: boolean;
+  /** Goalie: ticks of Ward left. */
+  wardTicks: number;
 }
 
 /** Where a player starts. Player ids are their index in the roster. */
@@ -143,6 +163,9 @@ export type SimEvent =
   | { type: 'checkBounce'; playerId: number; goalieId: number }
   | { type: 'boardSlam'; playerId: number; speed: number }
   | { type: 'restart' }
+  | { type: 'cast'; playerId: number; team: TeamIndex; spell: SpellId }
+  | { type: 'hexShove'; playerId: number; hits: number[]; loosened: boolean }
+  | { type: 'wardBlock'; goalieId: number; team: TeamIndex }
   | { type: 'faceoffSet'; takers: [number, number] }
   | { type: 'whistle' }
   | {

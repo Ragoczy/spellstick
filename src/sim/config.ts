@@ -225,6 +225,57 @@ export const DEFAULT_CONFIG = {
     goalieBounceStaggerSeconds: 0.4,
   },
 
+  /** Mana (SPEC §6). Runners only; the goalie's Ward runs on a cooldown alone. */
+  mana: {
+    max: 100,
+    /** Regeneration while carrying the ball (per second)... */
+    regenCarrying: 0.6,
+    /** ...and while not carrying it (per second). */
+    regenFree: 1.0,
+  },
+
+  /** Spells (SPEC §6). Names and descriptions live in src/content/spells.ts. */
+  spells: {
+    hexShove: {
+      cost: 50,
+      cooldownSeconds: 10,
+      /** Opponents within this distance (m)... */
+      range: 3.5,
+      /** ...and this half-angle of where the stick points (degrees) are hit. */
+      coneHalfAngleDeg: 35,
+      /** Knockback speed (m/s) and stagger (s) for each player hit. */
+      knockbackSpeed: 9,
+      staggerSeconds: 0.6,
+      /** A carrier who gets hit always loses the ball, which pops out at this speed (m/s). */
+      looseSpeed: 6,
+    },
+    quickstep: {
+      cost: 30,
+      cooldownSeconds: 8,
+      durationSeconds: 2.5,
+      /** Top speed multiplier while active. */
+      speedMultiplier: 1.4,
+    },
+    bentShot: {
+      cost: 25,
+      cooldownSeconds: 5,
+      /** The armed shot launches this far (degrees) off the aim line, then curves back onto it. */
+      bendAngleDeg: 14,
+      /** Curve is planned for at least this distance (m), so very close shots don't whip around. */
+      minBendDistance: 4,
+      /** Extra save-chance penalty for a bending shot: it's harder to read. */
+      savePenalty: 0.25,
+    },
+    ward: {
+      cooldownSeconds: 180,
+      /** The shield stays up this long (s) or until it blocks one shot. */
+      durationSeconds: 1.0,
+      /** A warded shot bounces back out at this fraction of its speed. */
+      reboundSpeedKeep: 0.4,
+      reboundScatterDeg: 40,
+    },
+  },
+
   /**
    * AI tuning. `levels` are the difficulty presets (SPEC §7); the rest is shared behavior.
    * Durations are in seconds, distances in meters.
@@ -249,6 +300,8 @@ export const DEFAULT_CONFIG = {
         faceoffWindowSeconds: 0.35,
         /** Chance of jumping the whistle (a misfire loses the faceoff). */
         faceoffMisfireChance: 0.1,
+        /** Scales how readily the AI casts spells when a good moment comes up. */
+        spellEagerness: 0.5,
       },
       normal: {
         reactionSeconds: 0.17,
@@ -260,6 +313,7 @@ export const DEFAULT_CONFIG = {
         faceoffReactionSeconds: 0.12,
         faceoffWindowSeconds: 0.25,
         faceoffMisfireChance: 0.04,
+        spellEagerness: 1,
       },
       hard: {
         reactionSeconds: 0.1,
@@ -271,6 +325,7 @@ export const DEFAULT_CONFIG = {
         faceoffReactionSeconds: 0.1,
         faceoffWindowSeconds: 0.15,
         faceoffMisfireChance: 0.02,
+        spellEagerness: 1.3,
       },
     },
     runner: {
@@ -330,6 +385,21 @@ export const DEFAULT_CONFIG = {
       /** ...under this (s): shoot from anywhere within desperateRange. */
       shotClockDesperateSeconds: 3,
       desperateRange: 20,
+      /** Per-tick chance (times spellEagerness) of Hex Shove when an opponent is in the cone. */
+      hexShoveChancePerTick: 0.0015,
+      /** ...tripled against a carrier winding up a shot or within this distance (m) of our goal. */
+      hexShoveThreatDistance: 9,
+      /** Quickstep for a breakaway: carrying with this much open floor (m) toward goal... */
+      quickstepBreakawayDistance: 14,
+      /** ...and nobody within this distance (m) of us. */
+      quickstepBreakawaySpace: 4,
+      /** ...or racing an opponent to a loose ball that's this close (m). */
+      quickstepRaceDistance: 6,
+      /** Per-tick chances (times spellEagerness) of Quickstep in those two situations. */
+      quickstepBreakawayChancePerTick: 0.02,
+      quickstepRaceChancePerTick: 0.003,
+      /** Chance (times spellEagerness) of arming Bent Shot before a shot when it's ready. */
+      bentShotChance: 0.6,
     },
     goalie: {
       /** Distance in front of the goal line the goalie patrols. */
@@ -340,6 +410,10 @@ export const DEFAULT_CONFIG = {
       chaseLooseRange: 4.5,
       /** Holds a caught ball this long before clearing. */
       holdSeconds: 0.85,
+      /** Raise the Ward against an on-target shot from closer than this (m)... */
+      wardDangerDistance: 7,
+      /** ...or faster than this (m/s). */
+      wardDangerSpeed: 27,
     },
   },
 
@@ -386,6 +460,9 @@ function deepMerge<T>(base: T, over: DeepPartial<T>): T {
   }
   return base;
 }
+
+/** Whole ticks for a duration in seconds. */
+export const secondsToTicks = (s: number, config: SimConfig): number => Math.round(s * config.tickHz);
 
 /** Seconds per sim tick. */
 export function tickSeconds(config: SimConfig): number {

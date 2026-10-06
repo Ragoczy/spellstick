@@ -9,7 +9,7 @@ const ff = (page: Page, phase: string) =>
     return h.state.phase;
   }, phase);
 
-test('faceoff, period break, and final screens', async ({ page }) => {
+test('faceoff, spells, period break, and final screens', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('./');
   await page.waitForFunction(
@@ -17,6 +17,19 @@ test('faceoff, period break, and final screens', async ({ page }) => {
   );
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'test-results/faceoff.png' });
+
+  // Get to live play (jump the whistle), then cast Quickstep, Bent Shot, and Hex Shove.
+  await page.mouse.click(640, 380);
+  await page.waitForTimeout(300);
+  await page.keyboard.press('e');
+  await page.keyboard.press('r');
+  await page.keyboard.down('d');
+  await page.waitForTimeout(500);
+  await page.keyboard.up('d');
+  await page.screenshot({ path: 'test-results/spells-active.png' });
+  await page.keyboard.press('q');
+  await page.waitForTimeout(60);
+  await page.screenshot({ path: 'test-results/hex-shove.png' });
 
   expect(await ff(page, 'periodBreak')).toBe('periodBreak');
   await page.waitForTimeout(150);

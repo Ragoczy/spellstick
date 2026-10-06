@@ -20,12 +20,14 @@ const level = config.ai.levels.normal;
 const secs = (s: number) => Math.round(s * config.tickHz);
 
 /** A shooter (id 0) vs the AI goalie (id 1). */
-function shooterVsGoalie(shooterPos: { x: number; y: number }, seed: number) {
+/** A shooter vs the AI goalie. Ward is on cooldown unless `ward`, to measure plain saves. */
+function shooterVsGoalie(shooterPos: { x: number; y: number }, seed: number, ward = false) {
   const state = createMatch(config, seed, [
     { team: 0, number: 7, pos: shooterPos },
     { team: 1, number: 1, pos: { x: goal.mouth.x - 1, y: 0 }, role: 'goalie' },
   ]);
   state.ball.carrier = 0;
+  if (!ward) state.players[1]!.spellCooldowns.ward = 1e9;
   return { state, goalie: createGoalieAI(config, level) };
 }
 
@@ -69,6 +71,18 @@ describe('AI goalie', () => {
     }
     // The shot is heading for +y; the goalie should have shifted that way.
     expect(state.players[1]!.pos.y).toBeGreaterThan(y0);
+  });
+
+  it('raises the Ward against a hard, close, on-target shot', () => {
+    const { state, goalie } = shooterVsGoalie({ x: goal.mouth.x - 6, y: 0 }, 1, true);
+    const aim = { x: goal.mouth.x, y: goal.width / 2 - 0.25 };
+    let warded = false;
+    for (let i = 0; i < 70; i++) step(state, { move: { x: 0, y: 0 }, aim, primary: true }, goalie);
+    for (let i = 0; i < 40 && state.phase === 'live'; i++) {
+      step(state, { move: { x: 0, y: 0 }, aim }, goalie);
+      if (state.events.some((e) => e.type === 'cast' && e.spell === 'ward')) warded = true;
+    }
+    expect(warded).toBe(true);
   });
 
   it('clears the ball after holding it', () => {

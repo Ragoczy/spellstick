@@ -1,16 +1,19 @@
-# Playtest notes — M4 (Rules and match flow)
+# Playtest notes — M5 (Mana and spells)
 
 **Build:** https://ragoczy.github.io/spellstick/ (the git SHA is in the bottom-right corner)
 
+The spell names and effects are placeholders from the spec. They're all in one file (`src/content/spells.ts`) for when you have the real ones.
+
 ## What changed
 
-- **Faceoffs:** every period starts, and play restarts after every goal, with a faceoff at center. You always take your team's draw. Wait for the "WHISTLE!" flash, then click; first click wins the ball. Click early and it's a misfire: the other team gets it. The whistle comes at a random moment 1–2 seconds after everyone sets.
-- **Shot clock:** 30 seconds, shown under the game clock and outlined in the color of the team it's running for. It turns red at 10. It restarts when the ball changes teams or a shot hits the post or the goalie. If it runs out, the other team gets the ball where it is.
-- **Crease:** carry the ball into the other team's crease circle and it's a turnover to their goalie. A goal scored while any attacker is standing in the crease is waved off. Defenders can stand in their own crease.
-- **Periods and overtime:** 4 periods of 2:30 with a short "End of period" break between them. If it's tied after four, it goes to sudden-death overtime (OT, then 2OT if needed). First goal wins.
-- **HUD:** both scores, the period, the game clock, the shot clock, and callouts for goals, misfires, crease and shot-clock turnovers, and overtime. A final screen at the end; click to play again.
-- **AI:** takes faceoffs with a reaction time and an occasional misfire, gets more shot-happy as the shot clock runs down, and stays out of the opponent's crease.
-- **Headless sim (1,000 full matches):** every match finishes (no ties); 16.5% go to overtime; faceoffs split 51/49 with 7.5% misfires; 6.5 goals per game; 0.4 crease violations per game (26 goals waved off in 1,000 games); home win 49.8%; 0 stuck players. Shot-clock violations are 0 in AI play because possessions rarely last 30 seconds in this chaotic game; the rule is covered by unit tests.
+- **Mana:** each runner has a mana bar (bottom-left, under the Q/E/R icons). It refills slowly, a bit faster when you don't have the ball. The little ticks on the bar mark what each spell costs.
+- **Q — Hex Shove** (50 mana, 10 s cooldown): a gold cone blast in the direction your stick points. Everyone on the other team inside it is knocked back and dazed, and a ball carrier it hits always loses the ball. It doesn't move a goalie standing in their crease.
+- **E — Quickstep** (30 mana, 8 s): 40% faster for 2.5 seconds. You get a gold aura.
+- **R — Bent Shot** (25 mana, 5 s): arms your next shot (your stick head pulses gold). Aim at a corner and shoot: the ball starts out wide of the post, as if it's going to miss, then curls back in onto your cursor, leaving a gold trail. The goalie reads it badly.
+- **Ward (goalies, automatic):** a goalie can throw up a gold shield across the goal mouth that blocks one shot that beat them. It has a 3-minute cooldown, so each goalie gets about one per period. The AI goalie decides when.
+- **Spell icons:** each shows its key, a dark shutter that lowers as it recharges, dims when you can't afford it, and lights gold while it's active or armed.
+- **The AI casts too:** Hex Shove mostly against a shooter winding up or a carrier right on top of its goal, Quickstep on breakaways and races for loose balls, Bent Shot on a lot of its shots.
+- **Headless sim (1,000 full matches):** 6.4 goals per game. 83 casts per game, none above 40% of casts: Quickstep 36%, Bent Shot 33%, Hex Shove 26%, Ward 6%. Ward blocks about 3 goals a game, home win 50.8%, 0 stuck players.
 
 ## How to run
 
@@ -19,17 +22,18 @@
 
 ## Things to try
 
-1. Win the opening faceoff. Then try jumping the whistle on purpose to see the misfire.
-2. Sit on the ball in your own half and let the shot clock run out.
-3. Carry the ball into the opponent's crease. Then stand a teammate in the crease (switch to them with Space when you don't have the ball) and score.
-4. Play through a period break and watch the shot clock and game clock pause.
-5. If you can, get a tied game to overtime and score the winner (or lose it).
-6. Check the HUD is readable at a glance mid-play.
+1. Press R, then wind up a shot at a top or bottom corner from about 9 m. Watch it bend. Compare with a normal shot from the same spot.
+2. On defense, get close to the carrier (Space to switch), point your stick at them, and press Q.
+3. Press E with the ball and some open floor ahead. Is the speed boost noticeable?
+4. Shoot hard from close in and see if the goalie throws up a Ward.
+5. Spend all your mana and see how long it takes to come back. Is the regen too slow to matter?
+6. Watch the AI: does its spell use look smart, or random and spammy?
 
 ## Questions for you
 
-1. Is the faceoff fun? Too easy, too hard to win against Normal? Is a 1–2 second random whistle delay right?
-2. Is 30 seconds the right shot clock for a game this fast, or would you rather it bite more often?
-3. Is the crease rule clear when it happens, or does the turnover feel like it came from nowhere?
-4. Are 2:30 periods the right length? (A match is about 10–11 minutes with breaks.)
-5. Anything missing from the HUD you'd look for during play?
+1. Which spell feels best? Which feels weakest or most pointless?
+2. Is Hex Shove too strong? It always strips the ball, which is what the spec says, so the cost and cooldown are what keep it in check.
+3. Does Bent Shot read as "curves toward the cursor side"? I made it a banana shot that swings in from outside the post; say if you pictured something different.
+4. Is mana regen too slow (you rarely get to cast) or too fast (spells all the time)?
+5. Is the Ward fun, or does it just feel like being robbed?
+6. Are the spell visuals readable mid-chaos?

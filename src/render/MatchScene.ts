@@ -25,6 +25,7 @@ import { BallView } from './BallView';
 import { Hud } from './Hud';
 import { PALETTE } from './palette';
 import { PlayerView } from './PlayerView';
+import { SpellBar } from './SpellBar';
 import { drawRink } from './RinkView';
 import { WorldView } from './view';
 
@@ -45,6 +46,9 @@ export class MatchScene extends Phaser.Scene {
   private view!: WorldView;
   private input_!: HumanInput;
   private hud!: Hud;
+  private spellBar!: SpellBar;
+  /** Gold shields across the goal mouths while a goalie's Ward is up. */
+  private wardFx!: Phaser.GameObjects.Graphics;
   private controlledId = 0;
   private prev!: Snapshot;
   private playerViews: PlayerView[] = [];
@@ -67,6 +71,8 @@ export class MatchScene extends Phaser.Scene {
     this.teams = [TEAMS[DEFAULT_HOME], TEAMS[DEFAULT_AWAY]];
     drawRink(this, arena, this.view, [this.teams[0].color, this.teams[1].color]);
     this.hud = new Hud(this, this.config, this.teams);
+    this.spellBar = new SpellBar(this, this.config);
+    this.wardFx = this.add.graphics().setDepth(12);
     this.input.on('pointerdown', () => {
       if (this.state.phase === 'final') this.startMatch();
     });
@@ -153,6 +159,15 @@ export class MatchScene extends Phaser.Scene {
       case 'checkBounce':
         this.hitFlash(this.state.players[e.playerId]!.pos, false);
         break;
+      case 'hexShove':
+        this.shoveFlash(this.state.players[e.playerId]!);
+        break;
+      case 'cast':
+        if (e.spell !== 'hexShove') this.castPulse(this.state.players[e.playerId]!.pos);
+        break;
+      case 'wardBlock':
+        this.castPulse(this.state.players[e.goalieId]!.pos, 2.5);
+        break;
       case 'boardSlam':
         this.cameras.main.shake(120, 0.004);
         break;
@@ -190,6 +205,32 @@ export class MatchScene extends Phaser.Scene {
     if (next) this.controlledId = next.id;
   }
 
+  /** Hex Shove: a gold cone that flares out from the caster's stick and fades. */
+  private shoveFlash(caster: { pos: { x: number; y: number }; facing: number }): void {
+    const hs = this.config.spells.hexShove;
+    const half = (hs.coneHalfAngleDeg * Math.PI) / 180;
+    const g = this.add.graphics().setDepth(19);
+    g.fillStyle(PALETTE.mana, 0.45);
+    g.slice(
+      this.view.x(caster.pos.x),
+      this.view.y(caster.pos.y),
+      this.view.len(hs.range),
+      caster.facing - half,
+      caster.facing + half,
+    );
+    g.fillPath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 300, onComplete: () => g.destroy() });
+  }
+
+  /** A gold ring pulse for a spell cast (or a Ward block). */
+  private castPulse(pos: { x: number; y: number }, size = 1.2): void {
+    const ring = this.add
+      .circle(this.view.x(pos.x), this.view.y(pos.y), this.view.len(size))
+      .setStrokeStyle(3, PALETTE.mana, 0.9)
+      .setDepth(20);
+    this.tweens.add({ targets: ring, scale: 1.8, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
+  }
+
   /** A quick expanding ring where a check lands; gold if it knocked the ball loose. */
   private hitFlash(pos: { x: number; y: number }, loosened: boolean): void {
     const ring = this.add
@@ -221,10 +262,14 @@ export class MatchScene extends Phaser.Scene {
         passTarget: i === passTargetId,
         staggered: p.staggerTicks > 0,
         checkReady: p.checkCooldown === 0,
+        quickstep: p.quickstepTicks > 0,
+        bentArmed: p.bentArmed,
       });
     });
     this.ballView.update(lerp(this.prev.ball.x, s.ball.pos.x), lerp(this.prev.ball.y, s.ball.pos.y), s.ball);
     this.hud.update(s);
+    this.spellBar.update(s.players[this.controlledId]);
+    this.drawWards(s);
   }
 
   /**
@@ -237,6 +282,19 @@ export class MatchScene extends Phaser.Scene {
       stepMatch(this.state, inputs, this.config);
     }
     this.prev = snapshot(this.state);
+  }
+
+  private drawWards(s: Readonly<MatchState>): void {
+    const g = this.wardFx.clear();
+    for (const p of s.players) {
+      if (p.role !== 'goalie' || p.wardTicks <= 0) continue;
+      const goal = arenaGeometry(this.config).goals[p.team];
+      const x = this.view.x(goal.mouth.x);
+      const half = this.view.len(goal.width / 2 + 0.2);
+      const y = this.view.y(goal.mouth.y);
+      g.lineStyle(10, PALETTE.mana, 0.35).lineBetween(x, y - half, x, y + half);
+      g.lineStyle(4, PALETTE.mana, 0.95).lineBetween(x, y - half, x, y + half);
+    }
   }
 
   get matchState(): Readonly<MatchState> {

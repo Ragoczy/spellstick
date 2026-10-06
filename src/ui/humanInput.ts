@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { InputCommand, Vec2 } from '../sim';
+import { RUNNER_SPELLS, type InputCommand, type SpellId, type Vec2 } from '../sim';
 
 /** Screen-to-world mapping, supplied by the renderer. */
 export interface ScreenToWorld {
@@ -16,6 +16,8 @@ export class HumanInput {
   private pendingDrop = false;
   private pendingPrimary = false;
   private pendingCheck = false;
+  /** Spell presses waiting for a tick, oldest first: one cast per tick, none dropped. */
+  private castQueue: SpellId[] = [];
   /** Called when the player presses the switch key (Space). Control switching is a UI concern, not a sim rule. */
   onSwitch: () => void = () => {};
   private pointerSeen = false;
@@ -27,6 +29,10 @@ export class HumanInput {
     const kb = scene.input.keyboard!;
     this.keys = kb.addKeys('W,A,S,D') as HumanInput['keys'];
     kb.on('keydown-G', () => (this.pendingDrop = true));
+    // Q / E / R: spells 1-3 (SPEC §5).
+    (['Q', 'E', 'R'] as const).forEach((key, i) =>
+      kb.on(`keydown-${key}`, () => this.castQueue.push(RUNNER_SPELLS[i]!)),
+    );
     kb.on('keydown-SPACE', () => this.onSwitch());
     kb.addCapture('SPACE');
     scene.input.mouse?.disableContextMenu();
@@ -47,7 +53,14 @@ export class HumanInput {
     const pointer = this.scene.input.activePointer;
     const aim = this.pointerSeen ? this.view.toWorld(pointer.x, pointer.y) : fallbackAim;
     const primary = this.pendingPrimary || pointer.leftButtonDown();
-    return { move, aim, primary, check: this.pendingCheck, debugDrop: this.pendingDrop };
+    return {
+      move,
+      aim,
+      primary,
+      check: this.pendingCheck,
+      cast: this.castQueue[0],
+      debugDrop: this.pendingDrop,
+    };
   }
 
   /** Call after a sim tick consumed the command, so presses fire once. */
@@ -55,5 +68,6 @@ export class HumanInput {
     this.pendingDrop = false;
     this.pendingPrimary = false;
     this.pendingCheck = false;
+    this.castQueue.shift();
   }
 }

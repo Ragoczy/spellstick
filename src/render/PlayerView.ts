@@ -18,6 +18,10 @@ export interface PlayerDrawState {
   staggered: boolean;
   /** Body check is off cooldown (shown on the controlled player's marker). */
   checkReady: boolean;
+  /** Quickstep is running. */
+  quickstep: boolean;
+  /** Bent Shot is armed. */
+  bentArmed: boolean;
 }
 
 /**
@@ -71,7 +75,7 @@ export class PlayerView {
     this.stick.setTo(sx, sy, hx, hy);
     this.head.setPosition(hx, hy);
 
-    const needFx = s.charge > 0 || s.passTarget || s.staggered;
+    const needFx = s.charge > 0 || s.passTarget || s.staggered || s.quickstep || s.bentArmed;
     if (needFx || this.fxDrawn) this.fx.clear();
     this.fxDrawn = needFx;
     if (s.charge > 0) {
@@ -86,6 +90,20 @@ export class PlayerView {
     if (s.passTarget) {
       this.fx.lineStyle(2, PALETTE.text, 0.6);
       this.fx.strokeCircle(sx, sy, r + 6);
+    }
+    if (s.quickstep) {
+      // Quickstep: a gold aura with a flicker.
+      const t = this.body.scene.time.now / 90;
+      this.fx.lineStyle(3, PALETTE.mana, 0.6 + 0.3 * Math.sin(t));
+      this.fx.strokeCircle(sx, sy, r + 4);
+      this.fx.fillStyle(PALETTE.mana, 0.18);
+      this.fx.fillCircle(sx, sy, r + 7);
+    }
+    if (s.bentArmed) {
+      // Bent Shot armed: the stick head pulses gold.
+      const pulse = 0.5 + 0.5 * Math.sin(this.body.scene.time.now / 110);
+      this.fx.fillStyle(PALETTE.mana, 0.35 + 0.4 * pulse);
+      this.fx.fillCircle(hx, hy, this.view.len(0.28 + 0.12 * pulse));
     }
     if (s.staggered) {
       // Little orbiting stars: dazed.

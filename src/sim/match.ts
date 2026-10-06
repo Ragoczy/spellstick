@@ -2,6 +2,7 @@ import { handleActions, isCharging, secondsToTicks } from './actions';
 import { arenaFor } from './arena';
 import { tryScoop, updateBall } from './ball';
 import { resolveChecks, startCheck, stagger } from './checks';
+import { castSpell, NO_COOLDOWNS, tickSpellState } from './spells';
 import type { SimConfig } from './config';
 import { movePlayer, separatePlayers, steer, updateFacing } from './players';
 import { createRng } from './rng';
@@ -65,6 +66,11 @@ export function createMatch(
       dashDir: { x: 0, y: 0 },
       dashHit: false,
       staggerTicks: 0,
+      mana: config.mana.max,
+      spellCooldowns: { ...NO_COOLDOWNS },
+      quickstepTicks: 0,
+      bentArmed: false,
+      wardTicks: 0,
     })),
     events: [],
   };
@@ -120,6 +126,7 @@ export function stepMatch(
   for (const p of state.players) {
     if (p.stickCooldown > 0) p.stickCooldown--;
     if (p.checkCooldown > 0) p.checkCooldown--;
+    tickSpellState(state, p, config);
     const input = inputs[p.id] ?? NO_INPUT;
     if (p.staggerTicks > 0) {
       // Staggered: no control. Track the button so releasing it later isn't read as a new press.
@@ -131,6 +138,7 @@ export function stepMatch(
     updateFacing(p, input);
     handleActions(state, p, input, config);
     startCheck(p, input, config);
+    if (input.cast) castSpell(state, p, input.cast, arena, config);
     if (p.dashTicks > 0) {
       p.vel = { x: p.dashDir.x * config.check.dashSpeed, y: p.dashDir.y * config.check.dashSpeed };
     } else {
@@ -154,8 +162,13 @@ export function stepMatch(
 }
 
 function speedMultiplier(state: MatchState, p: Player, config: SimConfig): number {
-  if (state.ball.carrier !== p.id) return 1;
-  return config.player.carrySpeedMultiplier * (isCharging(p, config) ? config.shot.chargeMoveMultiplier : 1);
+  const quick = p.quickstepTicks > 0 ? config.spells.quickstep.speedMultiplier : 1;
+  if (state.ball.carrier !== p.id) return quick;
+  return (
+    quick *
+    config.player.carrySpeedMultiplier *
+    (isCharging(p, config) ? config.shot.chargeMoveMultiplier : 1)
+  );
 }
 
 /** Game-clock seconds left in the current period. */

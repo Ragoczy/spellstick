@@ -32,6 +32,8 @@ export function resetPositions(state: MatchState): void {
     p.checkCooldown = 0;
     p.dashTicks = 0;
     p.staggerTicks = 0;
+    p.quickstepTicks = 0;
+    p.wardTicks = 0;
   }
   state.ball = { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, carrier: null, flight: null, lastTouch: null };
   state.faceoff = null;
@@ -138,7 +140,7 @@ export function applyLiveRules(state: MatchState, arena: ArenaGeometry, config: 
   for (const e of state.events) {
     if (e.type === 'pickup' || e.type === 'catch') gainPossession(state, e.team, config);
     if (e.type === 'save' && e.caught) gainPossession(state, e.team, config);
-    if (e.type === 'save' || e.type === 'post') resetShotClock(state, config);
+    if (e.type === 'save' || e.type === 'post' || e.type === 'wardBlock') resetShotClock(state, config);
   }
 
   const carrier = state.ball.carrier !== null ? state.players[state.ball.carrier]! : null;

@@ -23,6 +23,8 @@ export interface MatchStats {
   faceoffMisfires: number;
   /** Goals waved off because an attacker was in the crease (also counted in creaseViolations). */
   goalsDisallowed: number;
+  /** Shots stopped by the goalie's Ward. */
+  wardBlocks: number;
   /** 1 if the match went to overtime. */
   overtimeGames: number;
   /** Successful and failed scoops of loose balls. */
@@ -68,6 +70,7 @@ const SUMMED_KEYS = [
   'faceoffMisfires',
   'goalsDisallowed',
   'overtimeGames',
+  'wardBlocks',
   'scoops',
   'scoopMisses',
   'shotClockViolations',
@@ -184,7 +187,7 @@ export function formatReport(
     `  scoops / game               ${perGame(report.scoops)}  (success ${pct(report.scoops, report.scoops + report.scoopMisses)})`,
     `  home / away / tied          ${report.homeWins} / ${report.awayWins} / ${report.ties}` +
       (decided > 0 ? `  (home win ${pct(report.homeWins, decided)})` : ''),
-    `  spell casts                 ${totalCasts}`,
+    `  spell casts                 ${totalCasts}  (${perGame(totalCasts)} / game, ward blocks ${perGame(report.wardBlocks)} / game)`,
     ...spellLines,
     `  shot-clock violations       ${report.shotClockViolations}  (${perGame(report.shotClockViolations)} / game)`,
     `  crease violations           ${report.creaseViolations}  (${perGame(report.creaseViolations)} / game, ${report.goalsDisallowed} goals waved off)`,

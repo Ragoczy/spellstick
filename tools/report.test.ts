@@ -22,6 +22,17 @@ describe('headless sim runner', () => {
     }
   });
 
+  it('the AI casts every spell in full matches (SPEC §7)', () => {
+    const casts: Record<string, number> = {};
+    for (const seed of [1, 2, 3]) {
+      for (const [spell, n] of Object.entries(runMatch(makeConfig(), seed).spellCasts)) {
+        casts[spell] = (casts[spell] ?? 0) + n;
+      }
+    }
+    for (const spell of ['hexShove', 'quickstep', 'bentShot', 'ward'])
+      expect(casts[spell] ?? 0).toBeGreaterThan(0);
+  });
+
   it('AI teams pick up the ball and nobody gets stuck in short games', () => {
     for (const seed of [1, 2, 3]) {
       const stats = runMatch(makeConfig({ match: { periodSeconds: 30 } }), seed);

@@ -1,7 +1,9 @@
 import type { Controller } from './index';
 import {
   arenaFor,
+  canCast,
   createRng,
+  inShoveCone,
   nextFloat,
   isCharging,
   nextRange,
@@ -108,6 +110,14 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     const shotAim = shotTarget(state, me, attack, urgency);
     const throughTraffic = shotAim !== null && (urgency > 0 || nextFloat(rng) < rc.forceShotChancePerTick);
     if (shotAim && (throughTraffic || laneOpen(state, me.team, me.pos, shotAim, shotClearance, false))) {
+      // Sometimes put some bend on it first (Bent Shot arms this tick; the shot starts next tick).
+      if (
+        !me.bentArmed &&
+        canCast(me, 'bentShot', config) &&
+        nextFloat(rng) < rc.bentShotChance * level.spellEagerness
+      ) {
+        return { move: { x: 0, y: 0 }, aim: shotAim, cast: 'bentShot' };
+      }
       const d = dist(attack.mouth, me.pos);
       const fullCharge = ticks(config.shot.fullChargeSeconds);
       const charge = 0.35 + 0.65 * Math.min(1, d / level.shootRange) * (0.6 + 0.4 * nextFloat(rng));
@@ -407,13 +417,71 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     return possessingTeam(state) === me.team ? offBallOffense(state, me, attack) : defense(state, me, defend);
   }
 
+  /**
+   * Situational spells (SPEC §7: "not on cooldown spam"): Hex Shove at a carrier or a
+   * defender crowding us, or in a loose-ball fight; Quickstep for a breakaway or a race to
+   * a loose ball. (Bent Shot is decided with the shot itself.)
+   */
+  function chooseSpell(state: Readonly<MatchState>, me: Player): InputCommand['cast'] {
+    const ball = state.ball;
+    const eager = level.spellEagerness;
+    if (canCast(me, 'hexShove', config)) {
+      for (const o of state.players) {
+        if (o.team === me.team || o.role === 'goalie' || o.staggerTicks > 0 || !inShoveCone(me, o, config))
+          continue;
+        const theyCarry = ball.carrier === o.id;
+
+        const looseFight =
+          ball.carrier === null && ball.flight === null && dist(o.pos, ball.pos) < dist(me.pos, ball.pos);
+        // A defensive emergency tool: a carrier winding up, or right on top of our goal.
+        const threat =
+          theyCarry &&
+          (isCharging(o, config) ||
+            dist(o.pos, defendGoal(config, me.team).mouth) < rc.hexShoveThreatDistance);
+        const weight = threat ? 3 : looseFight ? 0.3 : 0;
+        if (weight > 0 && nextFloat(rng) < rc.hexShoveChancePerTick * eager * weight) return 'hexShove';
+      }
+    }
+    // Quickstep only with mana to spare for a Hex Shove afterward.
+    const reserve = config.spells.quickstep.cost + config.spells.hexShove.cost;
+    if (canCast(me, 'quickstep', config) && me.quickstepTicks === 0 && me.mana >= reserve) {
+      const attack = attackGoal(config, me.team);
+      const breakaway =
+        ball.carrier === me.id &&
+        dist(me.pos, attack.mouth) > rc.quickstepBreakawayDistance &&
+        laneOpen(state, me.team, me.pos, attack.mouth, 3, false) &&
+        nearestOpponentDist(state, me) > rc.quickstepBreakawaySpace;
+      let race = false;
+      if (
+        ball.carrier === null &&
+        ball.flight === null &&
+        dist(me.pos, ball.pos) < rc.quickstepRaceDistance * 2
+      ) {
+        const rival = closestOpponent(state, me, ball.pos);
+        race =
+          rival !== null &&
+          dist(rival.pos, ball.pos) < rc.quickstepRaceDistance &&
+          dist(rival.pos, ball.pos) < dist(me.pos, ball.pos) + 1;
+      }
+      if (
+        (breakaway && nextFloat(rng) < rc.quickstepBreakawayChancePerTick * eager) ||
+        (race && nextFloat(rng) < rc.quickstepRaceChancePerTick * eager)
+      )
+        return 'quickstep';
+    }
+    return undefined;
+  }
+
   return {
     decide(state: Readonly<MatchState>, id: number): InputCommand {
       const me = state.players[id]!;
       if (state.phase === 'faceoff') return faceoff(state, me);
       faceoffMemo = null;
       if (state.phase !== 'live' || me.staggerTicks > 0) return IDLE;
-      return polish(state, me, decideRaw(state, me), state.ball.carrier === id);
+      const cmd = polish(state, me, decideRaw(state, me), state.ball.carrier === id);
+      if (cmd.cast) return cmd;
+      const spell = chooseSpell(state, me);
+      return spell ? { ...cmd, cast: spell } : cmd;
     },
   };
 }

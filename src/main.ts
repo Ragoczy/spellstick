@@ -17,5 +17,5 @@ new Phaser.Game({
 
 mountBuildTag();
 mountControlsHint(
-  'WASD move  ·  mouse aims  ·  click: pass  ·  hold + release: shoot  ·  right-click: check  ·  Space: switch player',
+  'WASD move  ·  mouse aims  ·  click: pass  ·  hold: shoot  ·  right-click: check  ·  Q E R: spells  ·  Space: switch',
 );

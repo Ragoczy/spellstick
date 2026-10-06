@@ -1,6 +1,7 @@
 import type { Controller } from './index';
 import {
   arenaFor,
+  canCast,
   distToSegment,
   type AiLevel,
   type InputCommand,
@@ -62,6 +63,14 @@ export function createGoalieAI(config: SimConfig, level: AiLevel): Controller {
           const yCross = ball.pos.y + ball.vel.y * t;
           const y = Math.max(-goal.width / 2 - 0.3, Math.min(goal.width / 2 + 0.3, yCross - goal.mouth.y));
           const spot = { x: goal.mouth.x + out * 0.8, y: goal.mouth.y + y };
+          // Ward against a dangerous shot that's on target: close in, or hit hard.
+          const onTarget = Math.abs(yCross - goal.mouth.y) < goal.width / 2 + 0.2;
+          const from = Math.hypot(flight.from.x - goal.mouth.x, flight.from.y - goal.mouth.y);
+          const speed = Math.hypot(ball.vel.x, ball.vel.y);
+          const dangerous = from < gc.wardDangerDistance || speed > gc.wardDangerSpeed;
+          if (onTarget && dangerous && canCast(me, 'ward', config)) {
+            return { move: seek(me.pos, spot, 0.3), aim: ball.pos, cast: 'ward' };
+          }
           return { move: seek(me.pos, spot, 0.3), aim: ball.pos };
         }
       }

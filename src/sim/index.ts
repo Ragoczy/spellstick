@@ -5,6 +5,7 @@ export * from './match';
 export * from './actions';
 export * from './ball';
 export * from './checks';
+export * from './spells';
 export * from './possession';
 export * from './rules';
 export * from './players';

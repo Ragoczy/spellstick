@@ -1,10 +1,12 @@
-import type { SimConfig } from './config';
+import { arenaFor } from './arena';
+import { secondsToTicks, type SimConfig } from './config';
+import { bentLaunch } from './spells';
 import { facingDir, stickHead } from './players';
 import { nextRange } from './rng';
 import type { InputCommand, MatchState, Player } from './types';
 import { degToRad, rotate, type Vec2 } from './vec';
 
-export const secondsToTicks = (s: number, config: SimConfig): number => Math.round(s * config.tickHz);
+export { secondsToTicks } from './config';
 
 /** Presses up to this many ticks long are passes. */
 export const tapTicks = (config: SimConfig): number => secondsToTicks(config.pass.tapSeconds, config);
@@ -50,7 +52,7 @@ export function handleActions(state: MatchState, p: Player, input: InputCommand,
     const held = p.primaryTicks;
     p.primaryTicks = 0;
     if (held <= tapTicks(config)) pass(state, p, config);
-    else shoot(state, p, chargeFraction(held, config), config);
+    else shoot(state, p, chargeFraction(held, config), input.aim, config);
   }
 }
 
@@ -145,6 +147,7 @@ function pass(state: MatchState, p: Player, config: SimConfig): void {
     ticks: 0,
     maxTicks: secondsToTicks(config.pass.airSeconds, config),
     from,
+    spin: 0,
   };
   state.events.push({ type: 'pass', playerId: p.id, team: p.team, target: target?.id ?? null });
 }
@@ -154,12 +157,21 @@ export function shotSpeed(charge: number, config: SimConfig): number {
   return config.shot.minSpeed + (config.shot.maxSpeed - config.shot.minSpeed) * charge;
 }
 
-function shoot(state: MatchState, p: Player, charge: number, config: SimConfig): void {
+function shoot(state: MatchState, p: Player, charge: number, aim: Vec2, config: SimConfig): void {
   const from = stickHead(p, config);
   const runFraction = Math.min(1, Math.hypot(p.vel.x, p.vel.y) / config.player.maxSpeed);
   const spread = degToRad(config.shot.spreadStandingDeg + config.shot.spreadRunningDeg * runFraction);
-  const dir = rotate(facingDir(p), nextRange(state.rng, -spread, spread));
   const speed = shotSpeed(charge, config);
+  let dir = rotate(facingDir(p), nextRange(state.rng, -spread, spread));
+  let spin = 0;
+  if (p.bentArmed) {
+    // Bent Shot: launch wide and curve back onto the aim point (plus the usual aim error).
+    p.bentArmed = false;
+    const goal = arenaFor(config).goals[p.team === 0 ? 1 : 0];
+    const bent = bentLaunch(from, aim, speed, goal, config);
+    dir = rotate(bent.dir, nextRange(state.rng, -spread, spread));
+    spin = bent.spin;
+  }
   releaseBall(state, p, { x: dir.x * speed, y: dir.y * speed }, config);
   state.ball.flight = {
     kind: 'shot',
@@ -169,6 +181,7 @@ function shoot(state: MatchState, p: Player, charge: number, config: SimConfig):
     ticks: 0,
     maxTicks: secondsToTicks(config.shot.airSeconds, config),
     from,
+    spin,
   };
   state.events.push({ type: 'shot', playerId: p.id, team: p.team, speed });
 }

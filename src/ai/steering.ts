@@ -12,7 +12,7 @@ export function seek(from: Vec2, target: Vec2, slowRadius: number): Vec2 {
 
 /**
  * If moving along `move` would run into a goal frame within `lookahead` meters, slide
- * along it instead (toward whichever side of the goal we're already on).
+ * along it instead, away from the goal's center.
  */
 export function avoidGoals(
   pos: Vec2,
@@ -34,11 +34,13 @@ export function avoidGoals(
     ) {
       continue;
     }
-    const side = pos.y >= goal.mouth.y ? 1 : -1;
-    // Of the two perpendiculars, take the one pointing to our side of the goal.
+    // Of the two perpendiculars, take the one leading away from the goal's center, so we
+    // round the frame instead of flip-flopping (e.g. when moving along the back bar).
+    const ax = pos.x - (b.minX + b.maxX) / 2;
+    const ay = pos.y - (b.minY + b.maxY) / 2;
     let tx = -dy;
     let ty = dx;
-    if (ty * side < 0) {
+    if (tx * ax + ty * ay < 0) {
       tx = -tx;
       ty = -ty;
     }

@@ -4,7 +4,7 @@ interface DebugHandle {
   state: {
     tick: number;
     ball: { carrier: number | null };
-    players: { team: number; pos: { x: number; y: number } }[];
+    players: { team: number; pos: { x: number; y: number }; primaryTicks: number }[];
   };
   controlledId: number;
   eventCounts: Record<string, number>;
@@ -39,6 +39,12 @@ test('loads the game, scoops, passes to a teammate, and shoots', async ({ page }
     () => (window as unknown as { __spellstick?: unknown }).__spellstick !== undefined,
   );
 
+  // Report the sim rate, to diagnose slow CI browsers.
+  const t0 = await debug(page);
+  await page.waitForTimeout(1000);
+  const t1 = await debug(page);
+  console.log(`sim ticks per wall-clock second: ${t1.state.tick - t0.state.tick}`);
+
   // Run right onto the ball at center court.
   const goal = toScreen(AWAY_GOAL);
   await page.mouse.move(goal.x, goal.y);
@@ -68,10 +74,13 @@ test('loads the game, scoops, passes to a teammate, and shoots', async ({ page }
 
   // Wind up and shoot at the goal.
   await page.mouse.move(goal.x, goal.y);
+  // Wait on sim time, not wall time: a slow CI browser may run fewer ticks per second.
   await page.mouse.down();
-  await page.waitForTimeout(700);
+  expect(await until(page, (d) => (d.state.players[d.controlledId]?.primaryTicks ?? 0) > 30, 8000)).toBe(
+    true,
+  );
   await page.mouse.up();
-  expect(await until(page, (d) => (d.eventCounts.shot ?? 0) >= 1, 2000)).toBe(true);
+  expect(await until(page, (d) => (d.eventCounts.shot ?? 0) >= 1, 4000)).toBe(true);
   await page.waitForTimeout(60);
   await page.screenshot({ path: 'test-results/smoke.png' });
 

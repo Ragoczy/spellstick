@@ -17,6 +17,14 @@ export interface MatchStats {
   checksLoosened: number;
   boardSlams: number;
   possessionChanges: number;
+  /** Faceoffs taken, how many the home team won, and how many were lost to misfires. */
+  faceoffs: number;
+  homeFaceoffWins: number;
+  faceoffMisfires: number;
+  /** Goals waved off because an attacker was in the crease (also counted in creaseViolations). */
+  goalsDisallowed: number;
+  /** 1 if the match went to overtime. */
+  overtimeGames: number;
   /** Successful and failed scoops of loose balls. */
   scoops: number;
   scoopMisses: number;
@@ -55,6 +63,11 @@ const SUMMED_KEYS = [
   'checksLoosened',
   'boardSlams',
   'possessionChanges',
+  'faceoffs',
+  'homeFaceoffWins',
+  'faceoffMisfires',
+  'goalsDisallowed',
+  'overtimeGames',
   'scoops',
   'scoopMisses',
   'shotClockViolations',
@@ -165,6 +178,8 @@ export function formatReport(
     `  saves / blocks / posts      ${perGame(report.saves)} / ${perGame(report.blocks)} / ${perGame(report.posts)} per game  (save rate ${pct(report.saves, report.saves + report.goals)})`,
     `  passes per game             ${perGame(report.passes)}  (completed ${pct(report.completions, report.passes)}, intercepted ${pct(report.interceptions, report.passes)})`,
     `  checks per game             ${perGame(report.checks)}  (ball loosened ${pct(report.checksLoosened, report.checks)}, board slams ${perGame(report.boardSlams)})`,
+    `  faceoffs / game             ${perGame(report.faceoffs)}  (home wins ${pct(report.homeFaceoffWins, report.faceoffs)}, misfires ${pct(report.faceoffMisfires, report.faceoffs)})`,
+    `  overtime games              ${report.overtimeGames}  (${pct(report.overtimeGames, report.games)})`,
     `  possession changes / game   ${perGame(report.possessionChanges)}`,
     `  scoops / game               ${perGame(report.scoops)}  (success ${pct(report.scoops, report.scoops + report.scoopMisses)})`,
     `  home / away / tied          ${report.homeWins} / ${report.awayWins} / ${report.ties}` +
@@ -172,7 +187,7 @@ export function formatReport(
     `  spell casts                 ${totalCasts}`,
     ...spellLines,
     `  shot-clock violations       ${report.shotClockViolations}  (${perGame(report.shotClockViolations)} / game)`,
-    `  crease violations           ${report.creaseViolations}  (${perGame(report.creaseViolations)} / game)`,
+    `  crease violations           ${report.creaseViolations}  (${perGame(report.creaseViolations)} / game, ${report.goalsDisallowed} goals waved off)`,
     `  longest stretch w/o a shot  ${secs(report.longestNoShotTicks)} s`,
     `  stuck-player incidents      ${report.stuckPlayerIncidents}`,
     warnings.length > 0

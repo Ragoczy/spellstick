@@ -97,8 +97,32 @@ export interface RosterEntry {
   lean?: Lean;
 }
 
-/** `goalPause`: dead ball after a goal; the clock and players are frozen. */
-export type MatchPhase = 'live' | 'goalPause' | 'final';
+/**
+ * - faceoff: players set at center, waiting for the whistle and the takers' presses.
+ * - live: normal play; the game clock and shot clock run.
+ * - goalPause: dead ball after a goal; clock and players frozen.
+ * - periodBreak: between periods (and before overtime).
+ * - final: the match is over.
+ */
+export type MatchPhase = 'faceoff' | 'live' | 'goalPause' | 'periodBreak' | 'final';
+
+/** A faceoff in progress (SPEC §4.1). */
+export interface Faceoff {
+  /** Player ids of the two takers, indexed by team. */
+  takers: [number, number];
+  /** Ticks since the players set. */
+  ticks: number;
+  /** The value of ticks at which the whistle blows. */
+  whistleAt: number;
+  /** True once the whistle has blown. */
+  whistled: boolean;
+}
+
+/** The shot clock (SPEC §4.3): the team it runs for (null: nobody yet) and ticks left. */
+export interface ShotClock {
+  team: TeamIndex | null;
+  ticksLeft: number;
+}
 
 /** Things that happened during a tick, for stats, audio, and announcer callouts. */
 export type SimEvent =
@@ -119,6 +143,18 @@ export type SimEvent =
   | { type: 'checkBounce'; playerId: number; goalieId: number }
   | { type: 'boardSlam'; playerId: number; speed: number }
   | { type: 'restart' }
+  | { type: 'faceoffSet'; takers: [number, number] }
+  | { type: 'whistle' }
+  | {
+      type: 'faceoffWin';
+      team: TeamIndex | null;
+      playerId: number | null;
+      reason: 'faster' | 'misfire' | 'timeout';
+    }
+  | { type: 'shotClockViolation'; team: TeamIndex }
+  | { type: 'creaseViolation'; playerId: number; team: TeamIndex }
+  | { type: 'goalDisallowed'; team: TeamIndex; attackerId: number }
+  | { type: 'periodStart'; period: number; overtime: boolean }
   | { type: 'ballBoards'; speed: number };
 
 /** The full, JSON-serializable state of a match. */
@@ -126,9 +162,12 @@ export interface MatchState {
   tick: number;
   rng: RngState;
   phase: MatchPhase;
-  /** Ticks left in the current dead-ball pause. */
+  /** Ticks left in the current dead-ball pause (goal pause or period break). */
   pauseTicks: number;
-  /** 1-based period number. */
+  /** The faceoff in progress, if phase is 'faceoff'. */
+  faceoff: Faceoff | null;
+  shotClock: ShotClock;
+  /** 1-based period number; periods past config.match.periods are sudden-death overtime. */
   period: number;
   /** Game-clock ticks left in the current period. Integers avoid float drift. */
   periodTicksLeft: number;

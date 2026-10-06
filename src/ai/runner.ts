@@ -14,7 +14,7 @@ import {
   type SimConfig,
   type Vec2,
 } from '../sim';
-import { avoidGoals, seek, spaceOut } from './steering';
+import { avoidCircle, avoidGoals, seek, spaceOut } from './steering';
 import {
   attackGoal,
   defendGoal,
@@ -102,8 +102,11 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
       return { move: { x: step.x * 0.3, y: step.y * 0.3 }, aim, primary: !release };
     }
 
-    const shotAim = shotTarget(state, me, attack);
-    const throughTraffic = shotAim !== null && nextFloat(rng) < rc.forceShotChancePerTick;
+    const clockLeft = state.shotClock.team === me.team ? state.shotClock.ticksLeft / hz : Infinity;
+    const urgency =
+      clockLeft < rc.shotClockDesperateSeconds ? 2 : clockLeft < rc.shotClockUrgentSeconds ? 1 : 0;
+    const shotAim = shotTarget(state, me, attack, urgency);
+    const throughTraffic = shotAim !== null && (urgency > 0 || nextFloat(rng) < rc.forceShotChancePerTick);
     if (shotAim && (throughTraffic || laneOpen(state, me.team, me.pos, shotAim, shotClearance, false))) {
       const d = dist(attack.mouth, me.pos);
       const fullCharge = ticks(config.shot.fullChargeSeconds);
@@ -184,12 +187,16 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
   }
 
   /** A shooting target inside a post (away from the goalie), or null if out of range or too sharp. */
-  function shotTarget(state: Readonly<MatchState>, me: Player, goal: GoalGeometry): Vec2 | null {
+  /** `urgency`: 0 normal, 1 shot clock running low (longer range), 2 about to expire (anything goes). */
+  function shotTarget(state: Readonly<MatchState>, me: Player, goal: GoalGeometry, urgency = 0): Vec2 | null {
     const front = (me.pos.x - goal.mouth.x) * -goal.backDir;
     const dy = me.pos.y - goal.mouth.y;
     const d = Math.hypot(front, dy);
-    if (front < rc.minShotFront || d > level.shootRange || d < goal.creaseRadius + 0.3) return null;
-    if (Math.abs(dy) > front * rc.maxShotAngleRatio) return null;
+    const range =
+      urgency === 2 ? rc.desperateRange : level.shootRange + (urgency === 1 ? rc.urgentRangeBonus : 0);
+    if (d > range || d < goal.creaseRadius + 0.3) return null;
+    if (urgency < 2 && (front < rc.minShotFront || Math.abs(dy) > front * rc.maxShotAngleRatio)) return null;
+    if (front < 0.5) return null; // behind the goal line: no angle at all
     const keeper = state.players.find((p) => p.role === 'goalie' && p.team === goal.defendedBy);
     const keeperY = keeper ? keeper.pos.y - goal.mouth.y : 0;
     const side = keeperY > 0.05 ? -1 : keeperY < -0.05 ? 1 : dy > 0 ? -1 : 1;
@@ -301,6 +308,49 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     return { move: seek(me.pos, spot, 1), aim: ball.pos };
   }
 
+  /** Plan for the current faceoff: when to press (or jump early), decided once per faceoff. */
+  let faceoffMemo: {
+    key: number;
+    misfireAt: number | null;
+    reaction: number;
+    sawWhistle: number | null;
+    pressed: boolean;
+  } | null = null;
+
+  function faceoff(state: Readonly<MatchState>, me: Player): InputCommand {
+    const f = state.faceoff!;
+    if (!f.takers.includes(me.id)) return IDLE;
+    const key = state.tick - f.ticks; // the tick this faceoff was set
+    if (!faceoffMemo || faceoffMemo.key !== key) {
+      const early = nextFloat(rng) < level.faceoffMisfireChance;
+      faceoffMemo = {
+        key,
+        // A misfire jumps before the earliest possible whistle.
+        misfireAt: early
+          ? Math.floor(nextRange(rng, 0.3, 0.9) * ticks(config.faceoff.minDelaySeconds))
+          : null,
+        reaction: ticks(level.faceoffReactionSeconds + nextFloat(rng) * level.faceoffWindowSeconds),
+        sawWhistle: null,
+        pressed: false,
+      };
+    }
+    const m = faceoffMemo;
+    const aim = { x: 0, y: 0 };
+    if (m.pressed) return { ...IDLE, aim };
+    if (m.misfireAt !== null && f.ticks >= m.misfireAt) {
+      m.pressed = true;
+      return { ...IDLE, aim, primary: true };
+    }
+    if (f.whistled) {
+      m.sawWhistle ??= state.tick;
+      if (state.tick - m.sawWhistle >= m.reaction) {
+        m.pressed = true;
+        return { ...IDLE, aim, primary: true };
+      }
+    }
+    return { ...IDLE, aim };
+  }
+
   /** Final touches on every command: keep space from teammates and steer around goals. */
   function polish(
     state: Readonly<MatchState>,
@@ -310,6 +360,9 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
   ): InputCommand {
     let move = carrying ? cmd.move : spaceOut(state, me, cmd.move, rc.teammateSpacing);
     move = avoidGoals(me.pos, move, arenaFor(config), config.player.radius + 0.2, rc.goalLookahead);
+    // Never step into the opponent's crease (SPEC §4.4).
+    const attack = attackGoal(config, me.team);
+    move = avoidCircle(me.pos, move, attack.mouth, attack.creaseRadius + rc.creaseMargin, rc.goalLookahead);
     return { ...cmd, move };
   }
 
@@ -334,7 +387,14 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     }
 
     // Loose ground ball: the nearest runner on each team goes for it, and fights for it.
-    if (ball.carrier === null && ball.flight === null && closestRunnerOnTeam(state, me, ball.pos)) {
+    const ballInTheirCrease =
+      dist(ball.pos, attack.mouth) < attack.creaseRadius + rc.creaseMargin + config.player.radius;
+    if (
+      ball.carrier === null &&
+      ball.flight === null &&
+      !ballInTheirCrease &&
+      closestRunnerOnTeam(state, me, ball.pos)
+    ) {
       const rival = closestOpponent(state, me, ball.pos);
       if (rival && dist(rival.pos, ball.pos) < dist(me.pos, ball.pos)) {
         const hit = maybeCheck(state, me, rival, ball.pos);
@@ -350,7 +410,9 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
   return {
     decide(state: Readonly<MatchState>, id: number): InputCommand {
       const me = state.players[id]!;
-      if (me.staggerTicks > 0) return IDLE;
+      if (state.phase === 'faceoff') return faceoff(state, me);
+      faceoffMemo = null;
+      if (state.phase !== 'live' || me.staggerTicks > 0) return IDLE;
       return polish(state, me, decideRaw(state, me), state.ball.carrier === id);
     },
   };

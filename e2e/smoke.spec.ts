@@ -10,6 +10,8 @@ interface DebugPlayer {
 interface DebugHandle {
   state: {
     tick: number;
+    phase: string;
+    faceoff: { takers: [number, number]; whistled: boolean } | null;
     ball: {
       carrier: number | null;
       pos: { x: number; y: number };
@@ -74,7 +76,7 @@ async function releaseAll(page: Page, held: Set<string>) {
   held.clear();
 }
 
-test('plays a 5v5 match: move, check, switch, and shoot', async ({ page }) => {
+test('plays a 5v5 match: faceoff, move, check, switch, and shoot', async ({ page }) => {
   test.setTimeout(60_000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -85,20 +87,38 @@ test('plays a 5v5 match: move, check, switch, and shoot', async ({ page }) => {
     () => (window as unknown as { __spellstick?: unknown }).__spellstick !== undefined,
   );
 
-  // Report the sim rate, to diagnose slow CI browsers.
+  // The match opens with a faceoff, and we're the home taker. Clicking right away jumps the
+  // whistle (it can't blow in the first second): a misfire, so the away taker gets the ball.
+  // That's deterministic, so it proves our click reaches the sim.
   const t0 = await debug(page);
+  expect(t0.state.players.filter((p) => p.role === 'runner')).toHaveLength(8);
+  expect(t0.state.players.filter((p) => p.role === 'goalie')).toHaveLength(2);
+  expect(t0.state.phase).toBe('faceoff');
+  expect(t0.state.faceoff!.whistled).toBe(false);
+  const awayTaker = t0.state.faceoff!.takers[1];
+  expect(t0.controlledId).toBe(t0.state.faceoff!.takers[0]);
+  await page.mouse.click(640, 380);
+  expect(await until(page, (d) => (d.eventCounts.faceoffWin ?? 0) >= 1, 5000)).toBe(true);
+  const afterDraw = await debug(page);
+  expect(afterDraw.eventCounts.whistle ?? 0).toBe(0);
+  expect(afterDraw.state.ball.carrier).toBe(awayTaker);
+  expect(afterDraw.state.phase).toBe('live');
+
+  // Report the sim rate, to diagnose slow CI browsers.
   await page.waitForTimeout(1000);
   const t1 = await debug(page);
-  console.log(`sim ticks per wall-clock second: ${t1.state.tick - t0.state.tick}`);
-  expect(t1.state.players.filter((p) => p.role === 'runner')).toHaveLength(8);
-  expect(t1.state.players.filter((p) => p.role === 'goalie')).toHaveLength(2);
+  console.log(`sim ticks per wall-clock second: ${t1.state.tick - afterDraw.state.tick}`);
 
   // WASD moves the controlled player.
-  const me0 = t1.state.players[t1.controlledId]!;
+  const me0 = afterDraw.state.players[afterDraw.controlledId]!;
   expect(me0.team).toBe(0);
   // Wait on sim progress rather than wall time (CI browsers can be very slow).
   await page.keyboard.down('s');
-  const moved = await until(page, (d) => d.state.players[t1.controlledId]!.pos.y > me0.pos.y + 0.5, 8000);
+  const moved = await until(
+    page,
+    (d) => d.state.players[afterDraw.controlledId]!.pos.y > me0.pos.y + 0.5,
+    8000,
+  );
   await page.keyboard.up('s');
   expect(moved).toBe(true);
 

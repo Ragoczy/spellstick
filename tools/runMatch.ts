@@ -12,7 +12,7 @@ import { StuckTracker } from './stuck';
 
 /** Plays one headless AI-vs-AI match to the final whistle and returns its stats. */
 export function runMatch(config: SimConfig, seed: number): MatchStats {
-  const state = createMatch(config, seed, matchRoster(config));
+  const state = createMatch(config, seed, matchRoster(config), { start: 'faceoff' });
   const controllers = createTeamControllers(state, config, seed);
   const stats = emptyMatchStats();
 
@@ -68,6 +68,28 @@ export function runMatch(config: SimConfig, seed: number): MatchStats {
           break;
         case 'boardSlam':
           stats.boardSlams++;
+          break;
+        case 'faceoffWin':
+          stats.faceoffs++;
+          if (e.team === 0) stats.homeFaceoffWins++;
+          if (e.reason === 'misfire') stats.faceoffMisfires++;
+          if (e.team !== null) gain(e.team);
+          break;
+        case 'shotClockViolation':
+          stats.shotClockViolations++;
+          gain(e.team === 0 ? 1 : 0);
+          break;
+        case 'creaseViolation':
+          stats.creaseViolations++;
+          gain(e.team === 0 ? 1 : 0);
+          break;
+        case 'goalDisallowed':
+          stats.creaseViolations++;
+          stats.goalsDisallowed++;
+          gain(e.team === 0 ? 1 : 0);
+          break;
+        case 'periodStart':
+          if (e.overtime) stats.overtimeGames = 1;
           break;
         case 'goal':
           possession = null;

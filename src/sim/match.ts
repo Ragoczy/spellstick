@@ -5,22 +5,44 @@ import { resolveChecks, startCheck, stagger } from './checks';
 import type { SimConfig } from './config';
 import { movePlayer, separatePlayers, steer, updateFacing } from './players';
 import { createRng } from './rng';
+import {
+  applyLiveRules,
+  endMatch,
+  isOvertime,
+  resetPositions,
+  setupFaceoff,
+  startNextPeriod,
+  stepFaceoff,
+  tickGameClock,
+} from './rules';
 import { NO_INPUT, type InputCommand, type MatchState, type Player, type RosterEntry } from './types';
 
 export { facingDir, stickHead } from './players';
 export { scoopChance } from './ball';
+export { resetPositions } from './rules';
+
+export interface MatchOptions {
+  /**
+   * How play begins: 'faceoff' for a real match (SPEC §4.1), or 'live' with the ball loose
+   * at center (drills and unit tests). Default 'live'.
+   */
+  start?: 'faceoff' | 'live';
+}
 
 /** Creates a fresh match. Same seed + config + roster + inputs ⇒ same match. */
 export function createMatch(
   config: SimConfig,
   seed: number,
   roster: readonly RosterEntry[] = [],
+  options: MatchOptions = {},
 ): MatchState {
   const state: MatchState = {
     tick: 0,
     rng: createRng(seed),
     phase: 'live',
     pauseTicks: 0,
+    faceoff: null,
+    shotClock: { team: null, ticksLeft: secondsToTicks(config.shotClock.seconds, config) },
     period: 1,
     periodTicksLeft: periodTicks(config),
     score: [0, 0],
@@ -47,6 +69,10 @@ export function createMatch(
     events: [],
   };
   resetPositions(state);
+  if (options.start === 'faceoff') {
+    setupFaceoff(state, config);
+    state.events = [];
+  }
   return state;
 }
 
@@ -67,13 +93,25 @@ export function stepMatch(
   if (state.phase === 'final') return;
   state.tick++;
 
-  if (state.phase === 'goalPause') {
-    if (--state.pauseTicks <= 0) {
-      resetPositions(state);
-      state.phase = 'live';
-      state.events.push({ type: 'restart' });
-    }
-    return;
+  switch (state.phase) {
+    case 'goalPause':
+      if (--state.pauseTicks <= 0) {
+        // Sudden death: an overtime goal ends it. Otherwise, faceoff (SPEC §4.1).
+        if (isOvertime(state, config)) endMatch(state);
+        else {
+          setupFaceoff(state, config);
+          state.events.push({ type: 'restart' });
+        }
+      }
+      return;
+    case 'periodBreak':
+      if (--state.pauseTicks <= 0) startNextPeriod(state, config);
+      return;
+    case 'faceoff':
+      stepFaceoff(state, inputs, config);
+      return;
+    case 'live':
+      break;
   }
 
   const arena = arenaFor(config);
@@ -109,43 +147,15 @@ export function stepMatch(
   resolveChecks(state, arena, config);
   separatePlayers(state.players, arena, config);
   updateBall(state, arena, config, dt);
-  if (state.phase !== 'live') return; // a goal was scored; the clock stops
+  if (state.phase !== 'live') return; // a goal was scored; the clocks stop
   tryScoop(state, config);
-  tickClock(state, config);
+  applyLiveRules(state, arena, config);
+  tickGameClock(state, config);
 }
 
 function speedMultiplier(state: MatchState, p: Player, config: SimConfig): number {
   if (state.ball.carrier !== p.id) return 1;
   return config.player.carrySpeedMultiplier * (isCharging(p, config) ? config.shot.chargeMoveMultiplier : 1);
-}
-
-/** Puts every player back at their start spot and the ball loose at center. */
-export function resetPositions(state: MatchState): void {
-  for (const p of state.players) {
-    p.pos = { x: p.home.x, y: p.home.y };
-    p.vel = { x: 0, y: 0 };
-    p.facing = p.team === 0 ? 0 : Math.PI;
-    p.stickCooldown = 0;
-    p.primaryTicks = 0;
-    p.checkCooldown = 0;
-    p.dashTicks = 0;
-    p.staggerTicks = 0;
-  }
-  state.ball = { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, carrier: null, flight: null, lastTouch: null };
-}
-
-function tickClock(state: MatchState, config: SimConfig): void {
-  state.periodTicksLeft--;
-  if (state.periodTicksLeft > 0) return;
-  state.events.push({ type: 'periodEnd', period: state.period });
-  if (state.period >= config.match.periods) {
-    state.phase = 'final';
-    state.periodTicksLeft = 0;
-    state.events.push({ type: 'matchEnd', score: [state.score[0], state.score[1]] });
-  } else {
-    state.period++;
-    state.periodTicksLeft = periodTicks(config);
-  }
 }
 
 /** Game-clock seconds left in the current period. */

@@ -26,6 +26,11 @@ export function createGoalieAI(config: SimConfig, level: AiLevel): Controller {
   return {
     decide(state: Readonly<MatchState>, id: number): InputCommand {
       const me = state.players[id]!;
+      if (state.phase !== 'live') {
+        heldTicks = 0;
+        releaseNext = false;
+        return { move: { x: 0, y: 0 }, aim: state.ball.pos };
+      }
       const goal = arenaFor(config).goals[me.team];
       const out = -goal.backDir; // +x for the left goal
       const ball = state.ball;

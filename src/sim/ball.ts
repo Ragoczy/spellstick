@@ -11,6 +11,7 @@ import {
   segmentContact,
 } from './physics';
 import { stickHead } from './players';
+import { attackerInCrease, turnOver } from './possession';
 import { chance, nextFloat, nextRange } from './rng';
 import type { Flight, MatchState, Player } from './types';
 import { degToRad, rotate, type Vec2 } from './vec';
@@ -68,7 +69,7 @@ export function updateBall(state: MatchState, arena: ArenaGeometry, config: SimC
 
     for (const goal of arena.goals) {
       if (crossedGoalLine(prev, ball.pos, goal)) {
-        scoreGoal(state, goal, config);
+        scoreGoal(state, goal, arena, config);
         return;
       }
     }
@@ -125,9 +126,16 @@ function crossedGoalLine(prev: Vec2, pos: Vec2, goal: GoalGeometry): boolean {
   return Math.abs(y - goal.mouth.y) < goal.width / 2;
 }
 
-function scoreGoal(state: MatchState, goal: GoalGeometry, config: SimConfig): void {
+function scoreGoal(state: MatchState, goal: GoalGeometry, arena: ArenaGeometry, config: SimConfig): void {
   const ball = state.ball;
   const team: TeamIndex = goal.defendedBy === 0 ? 1 : 0;
+  // SPEC §4.4: no goal while any attacker is in the crease; the defense gets the ball.
+  const intruder = attackerInCrease(state, team, arena);
+  if (intruder) {
+    state.events.push({ type: 'goalDisallowed', team, attackerId: intruder.id });
+    turnOver(state, goal.defendedBy, true, config);
+    return;
+  }
   const toucher = ball.lastTouch !== null ? state.players[ball.lastTouch] : undefined;
   const scorer = toucher && toucher.team === team ? toucher.id : null;
   state.score[team]++;

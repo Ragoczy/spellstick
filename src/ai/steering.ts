@@ -89,3 +89,34 @@ export function spaceOut(state: Readonly<MatchState>, me: Player, move: Vec2, ra
   }
   return { x: move.x + rx, y: move.y + ry };
 }
+
+/**
+ * Keeps a player out of a circle (the opponent's crease): if already inside, head straight
+ * out; if `move` would enter it within `lookahead`, slide around it instead.
+ */
+export function avoidCircle(pos: Vec2, move: Vec2, center: Vec2, radius: number, lookahead: number): Vec2 {
+  const m = Math.hypot(move.x, move.y);
+  const ox = pos.x - center.x;
+  const oy = pos.y - center.y;
+  const d = Math.hypot(ox, oy);
+  if (d < radius) {
+    const s = Math.max(m, 0.6);
+    return d > 1e-6 ? { x: (ox / d) * s, y: (oy / d) * s } : { x: s, y: 0 };
+  }
+  if (m < 1e-6) return move;
+  const dx = move.x / m;
+  const dy = move.y / m;
+  // Closest approach of the ray to the center, within the lookahead.
+  const t = Math.max(0, Math.min(lookahead, -(ox * dx + oy * dy)));
+  const cx = ox + dx * t;
+  const cy = oy + dy * t;
+  if (Math.hypot(cx, cy) >= radius) return move;
+  // Slide along the tangent on our side of the circle.
+  let tx = -oy / d;
+  let ty = ox / d;
+  if (tx * dx + ty * dy < 0) {
+    tx = -tx;
+    ty = -ty;
+  }
+  return { x: tx * m, y: ty * m };
+}

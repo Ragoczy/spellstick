@@ -40,6 +40,26 @@ export const DEFAULT_CONFIG = {
     periodSeconds: 150,
     /** Dead-ball pause after a goal before play restarts (s). The game clock stops. */
     goalPauseSeconds: 2,
+    /** Break between periods, and before overtime (s). */
+    periodBreakSeconds: 3,
+    /** Length of each sudden-death overtime period (s); another starts if nobody scores. */
+    overtimeSeconds: 150,
+  },
+
+  /** Faceoffs (SPEC §4.1). */
+  faceoff: {
+    /** The whistle blows a random time after the players set, between these (s). */
+    minDelaySeconds: 1.0,
+    maxDelaySeconds: 2.0,
+    /** If nobody presses within this long after the whistle, the ball is just dropped loose (s). */
+    timeoutSeconds: 3,
+    /** How far each taker stands from the center dot (m). */
+    takerOffset: 0.9,
+  },
+
+  /** Shot clock (SPEC §4.3). */
+  shotClock: {
+    seconds: 30,
   },
 
   player: {
@@ -224,6 +244,11 @@ export const DEFAULT_CONFIG = {
         checkChancePerTick: 0.002,
         /** Goalie reaction time to a shot. */
         goalieReactionSeconds: 0.22,
+        /** Faceoff press after the whistle: this long, plus up to faceoffWindowSeconds more at random. */
+        faceoffReactionSeconds: 0.15,
+        faceoffWindowSeconds: 0.35,
+        /** Chance of jumping the whistle (a misfire loses the faceoff). */
+        faceoffMisfireChance: 0.1,
       },
       normal: {
         reactionSeconds: 0.17,
@@ -232,6 +257,9 @@ export const DEFAULT_CONFIG = {
         passLaneClearance: 2.2,
         checkChancePerTick: 0.004,
         goalieReactionSeconds: 0.13,
+        faceoffReactionSeconds: 0.12,
+        faceoffWindowSeconds: 0.25,
+        faceoffMisfireChance: 0.04,
       },
       hard: {
         reactionSeconds: 0.1,
@@ -240,6 +268,9 @@ export const DEFAULT_CONFIG = {
         passLaneClearance: 2.4,
         checkChancePerTick: 0.007,
         goalieReactionSeconds: 0.08,
+        faceoffReactionSeconds: 0.1,
+        faceoffWindowSeconds: 0.15,
+        faceoffMisfireChance: 0.02,
       },
     },
     runner: {
@@ -291,6 +322,14 @@ export const DEFAULT_CONFIG = {
       teammateSpacing: 2.2,
       /** Look this far ahead (m) for a goal frame in the way, and slide around it. */
       goalLookahead: 2.5,
+      /** Stay this far outside the opponent's crease (m). */
+      creaseMargin: 0.4,
+      /** Shot clock under this (s): shoot even through traffic, from a bit farther out... */
+      shotClockUrgentSeconds: 8,
+      urgentRangeBonus: 3,
+      /** ...under this (s): shoot from anywhere within desperateRange. */
+      shotClockDesperateSeconds: 3,
+      desperateRange: 20,
     },
     goalie: {
       /** Distance in front of the goal line the goalie patrols. */

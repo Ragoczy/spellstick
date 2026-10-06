@@ -96,11 +96,11 @@ test('plays a 5v5 match: move, check, switch, and shoot', async ({ page }) => {
   // WASD moves the controlled player.
   const me0 = t1.state.players[t1.controlledId]!;
   expect(me0.team).toBe(0);
+  // Wait on sim progress rather than wall time (CI browsers can be very slow).
   await page.keyboard.down('s');
-  await page.waitForTimeout(400);
+  const moved = await until(page, (d) => d.state.players[t1.controlledId]!.pos.y > me0.pos.y + 0.5, 8000);
   await page.keyboard.up('s');
-  const t2 = await debug(page);
-  expect(t2.state.players[t1.controlledId]!.pos.y).toBeGreaterThan(me0.pos.y + 0.5);
+  expect(moved).toBe(true);
 
   // Right-click throws a check (it goes on cooldown).
   await page.mouse.move(640, 380);

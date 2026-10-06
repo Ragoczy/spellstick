@@ -20,14 +20,19 @@ export interface PlayerDrawState {
   checkReady: boolean;
 }
 
-/** Placeholder art for one player: colored disc, stick line, jersey number. Sprite-swappable later. */
+/**
+ * Placeholder art for one player: colored disc, stick line, jersey number. Sprite-swappable later.
+ * Uses persistent shapes that are only moved each frame; the effects layer is redrawn only
+ * while something is showing, which keeps slow (software-rendered) browsers usable.
+ */
 export class PlayerView {
-  private readonly stick: Phaser.GameObjects.Graphics;
+  private readonly stick: Phaser.GameObjects.Line;
+  private readonly head: Phaser.GameObjects.Arc;
   private readonly body: Phaser.GameObjects.Arc;
   private readonly label: Phaser.GameObjects.Text;
   private readonly marker: Phaser.GameObjects.Triangle;
   private readonly fx: Phaser.GameObjects.Graphics;
-  private readonly goalie: boolean;
+  private fxDrawn = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -36,12 +41,13 @@ export class PlayerView {
     player: Player,
     color: number,
   ) {
-    this.goalie = player.role === 'goalie';
+    const goalie = player.role === 'goalie';
     this.fx = scene.add.graphics();
-    this.stick = scene.add.graphics();
+    this.stick = scene.add.line(0, 0, 0, 0, 0, 0, PALETTE.stick).setOrigin(0, 0).setLineWidth(1.5);
+    this.head = scene.add.circle(0, 0, view.len(goalie ? 0.3 : 0.16)).setStrokeStyle(2, PALETTE.stick, 1);
     this.body = scene.add
       .circle(0, 0, view.len(config.player.radius), color)
-      .setStrokeStyle(this.goalie ? 4 : 2, this.goalie ? 0xf2f2f2 : 0x000000, this.goalie ? 0.9 : 0.5);
+      .setStrokeStyle(goalie ? 4 : 2, goalie ? 0xf2f2f2 : 0x000000, goalie ? 0.9 : 0.5);
     this.label = scene.add
       .text(0, 0, String(player.number), {
         fontFamily: 'Arial, sans-serif',
@@ -62,15 +68,14 @@ export class PlayerView {
     const hx = sx + Math.cos(s.facing) * reach;
     const hy = sy + Math.sin(s.facing) * reach;
 
-    this.stick.clear();
-    this.stick.lineStyle(3, PALETTE.stick, 1);
-    this.stick.lineBetween(sx, sy, hx, hy);
-    this.stick.lineStyle(2, PALETTE.stick, 1);
-    this.stick.strokeCircle(hx, hy, this.view.len(this.goalie ? 0.3 : 0.16));
+    this.stick.setTo(sx, sy, hx, hy);
+    this.head.setPosition(hx, hy);
 
-    // Gold-orange glow: the stick charges with mana as you wind up a shot (SPEC §2, §8).
-    this.fx.clear();
+    const needFx = s.charge > 0 || s.passTarget || s.staggered;
+    if (needFx || this.fxDrawn) this.fx.clear();
+    this.fxDrawn = needFx;
     if (s.charge > 0) {
+      // Gold-orange glow: the stick charges with mana as you wind up a shot (SPEC §2, §8).
       this.fx.fillStyle(PALETTE.mana, 0.25 + 0.45 * s.charge);
       this.fx.fillCircle(hx, hy, this.view.len(0.25 + 0.35 * s.charge));
       this.fx.lineStyle(3, PALETTE.mana, 0.9);
@@ -82,7 +87,6 @@ export class PlayerView {
       this.fx.lineStyle(2, PALETTE.text, 0.6);
       this.fx.strokeCircle(sx, sy, r + 6);
     }
-
     if (s.staggered) {
       // Little orbiting stars: dazed.
       const t = this.body.scene.time.now / 120;
@@ -95,11 +99,13 @@ export class PlayerView {
 
     this.body.setPosition(sx, sy).setAlpha(s.staggered ? 0.65 : 1);
     this.label.setPosition(sx, sy);
-    this.marker.setVisible(s.controlled).setFillStyle(s.checkReady ? PALETTE.text : 0x6b6f7a);
-    if (s.controlled) this.marker.setPosition(sx, sy - r - 12);
+    this.marker.setVisible(s.controlled);
+    if (s.controlled) {
+      this.marker.setPosition(sx, sy - r - 12).setFillStyle(s.checkReady ? PALETTE.text : 0x6b6f7a);
+    }
   }
 
   destroy(): void {
-    for (const o of [this.stick, this.body, this.label, this.marker, this.fx]) o.destroy();
+    for (const o of [this.stick, this.head, this.body, this.label, this.marker, this.fx]) o.destroy();
   }
 }

@@ -8,13 +8,13 @@ export interface ScreenToWorld {
 
 /**
  * Turns keyboard and mouse into sim InputCommands for the controlled player.
- * Held keys are sampled every tick; button presses are queued and delivered to exactly
- * one sim tick, even when a frame runs zero or several ticks.
+ * Held inputs are sampled every tick. Presses are queued so that a click shorter than
+ * a frame still reaches the sim as at least one "button down" tick.
  */
 export class HumanInput {
   private readonly keys: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private pendingDrop = false;
-  private pendingToss = false;
+  private pendingPrimary = false;
   private pointerSeen = false;
 
   constructor(
@@ -24,9 +24,12 @@ export class HumanInput {
     const kb = scene.input.keyboard!;
     this.keys = kb.addKeys('W,A,S,D') as HumanInput['keys'];
     kb.on('keydown-G', () => (this.pendingDrop = true));
-    kb.on('keydown-T', () => (this.pendingToss = true));
     scene.input.mouse?.disableContextMenu();
     scene.input.on('pointermove', () => (this.pointerSeen = true));
+    scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.pointerSeen = true;
+      if (pointer.leftButtonDown()) this.pendingPrimary = true;
+    });
   }
 
   /** Builds this tick's command. `fallbackAim` is used until the mouse has moved. */
@@ -37,12 +40,13 @@ export class HumanInput {
     };
     const pointer = this.scene.input.activePointer;
     const aim = this.pointerSeen ? this.view.toWorld(pointer.x, pointer.y) : fallbackAim;
-    return { move, aim, debugDrop: this.pendingDrop, debugToss: this.pendingToss };
+    const primary = this.pendingPrimary || pointer.leftButtonDown();
+    return { move, aim, primary, debugDrop: this.pendingDrop };
   }
 
   /** Call after a sim tick consumed the command, so presses fire once. */
   consumePresses(): void {
     this.pendingDrop = false;
-    this.pendingToss = false;
+    this.pendingPrimary = false;
   }
 }

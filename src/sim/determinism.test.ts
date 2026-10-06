@@ -5,14 +5,15 @@ import { createMatch, stepMatch } from './match';
 import { duelRoster } from './roster';
 import type { InputCommand } from './types';
 
-/** Scripted inputs that steer, aim, drop, and toss, so every system gets exercised. */
+/** Scripted inputs that steer, aim, pass, shoot, and drop, so every system gets exercised. */
 function scriptedInputs(tick: number, playerId: number): InputCommand {
   const t = tick / 60 + playerId * 1.7;
   return {
     move: { x: Math.cos(t * 0.9), y: Math.sin(t * 1.3) },
     aim: { x: 10 * Math.cos(t * 0.5), y: 6 * Math.sin(t * 0.7) },
     debugDrop: tick % 97 === playerId * 13,
-    debugToss: tick % 151 === playerId * 7,
+    // Taps (passes) and long holds (shots) on different rhythms.
+    primary: tick % 151 < (playerId === 0 ? 3 : 40),
   };
 }
 

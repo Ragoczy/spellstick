@@ -2,6 +2,7 @@ import type { MatchState, SimConfig, Vec2 } from '../src/sim';
 
 /**
  * Flags players who barely move for too long during live play (SPEC §7: that's a bug).
+ * Goalies are exempt: standing in the crease while play is at the other end is their job.
  * One incident per `stuckSeconds` window a player stays within `stuckRadius` of where it started.
  */
 export class StuckTracker {
@@ -15,6 +16,7 @@ export class StuckTracker {
     const { stuckSeconds, stuckRadius } = this.config.diagnostics;
     const limit = Math.round(stuckSeconds * this.config.tickHz);
     for (const p of state.players) {
+      if (p.role === 'goalie') continue;
       const anchor = this.anchors[p.id];
       if (
         state.phase !== 'live' ||

@@ -21,3 +21,12 @@ export function clampLength(a: Vec2, max: number): Vec2 {
   const len = Math.hypot(a.x, a.y);
   return len > max ? { x: (a.x / len) * max, y: (a.y / len) * max } : a;
 }
+
+/** Rotates `a` by `radians` (standard rotation matrix; with +y down that is clockwise on screen). */
+export function rotate(a: Vec2, radians: number): Vec2 {
+  const c = Math.cos(radians);
+  const s = Math.sin(radians);
+  return { x: a.x * c - a.y * s, y: a.x * s + a.y * c };
+}
+
+export const degToRad = (deg: number): number => (deg * Math.PI) / 180;

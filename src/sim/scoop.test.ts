@@ -60,7 +60,7 @@ describe('auto-scoop (SPEC §4.2)', () => {
     run(state, config, 1, [input()]);
     expect(state.events.some((e) => e.type === 'scoopMiss')).toBe(true);
     expect(state.ball.vel.x).toBeGreaterThan(0);
-    expect(state.players[0]!.scoopCooldown).toBeGreaterThan(0);
+    expect(state.players[0]!.stickCooldown).toBeGreaterThan(0);
   });
 
   it('the nearest player gets the ball', () => {

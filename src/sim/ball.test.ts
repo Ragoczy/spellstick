@@ -60,13 +60,14 @@ describe('loose ball', () => {
     }
   });
 
-  it('bounces off the goal frame', () => {
+  it('bounces off the back of the goal frame', () => {
     const arena = arena0();
     const goal = arena.goals[1];
-    const { state, config } = ballOnly({ x: goal.mouth.x - 3, y: 0 }, { x: 15, y: 0 });
+    const { state, config } = ballOnly({ x: goal.mouth.x + goal.depth + 2, y: 0 }, { x: -15, y: 0 });
     run(state, config, 30);
-    expect(state.ball.vel.x).toBeLessThan(0);
+    expect(state.ball.vel.x).toBeGreaterThan(0);
     expect(boxContact(state.ball.pos, config.ball.radius - 1e-6, goalBox(goal))).toBeNull();
+    expect(state.score).toEqual([0, 0]);
   });
 });
 
@@ -97,15 +98,6 @@ describe('carrying', () => {
     expect(state.events.some((e) => e.type === 'release' && e.kind === 'drop')).toBe(true);
     run(state, config, 5, [input()]);
     expect(state.ball.carrier).toBeNull();
-  });
-
-  it('debug toss throws the ball toward the aim point', () => {
-    const { state, config } = soloMatch({ x: 0, y: 0 });
-    state.ball.carrier = 0;
-    run(state, config, 1, [input({ x: 0, y: 0 }, { x: 0, y: 10 }, { debugToss: true })]);
-    expect(state.ball.carrier).toBeNull();
-    expect(state.ball.vel.y).toBeGreaterThan(config.debug.tossSpeed * 0.9);
-    expect(Math.abs(state.ball.vel.x)).toBeLessThan(0.5);
   });
 });
 

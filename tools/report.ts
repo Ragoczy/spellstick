@@ -5,6 +5,13 @@ export interface MatchStats {
   ticks: number;
   score: [number, number];
   shots: number;
+  saves: number;
+  blocks: number;
+  posts: number;
+  passes: number;
+  /** Passes caught by the passing team. */
+  completions: number;
+  interceptions: number;
   possessionChanges: number;
   /** Successful and failed scoops of loose balls. */
   scoops: number;
@@ -18,42 +25,55 @@ export interface MatchStats {
   stuckPlayerIncidents: number;
 }
 
-export interface Report {
+/** Counters summed over all matches. */
+type Summed = Omit<MatchStats, 'ticks' | 'score' | 'spellCasts' | 'longestNoShotTicks'>;
+
+export interface Report extends Summed {
   games: number;
   totalTicks: number;
   goals: number;
   homeWins: number;
   awayWins: number;
   ties: number;
-  shots: number;
-  possessionChanges: number;
-  scoops: number;
-  scoopMisses: number;
   spellCasts: Record<string, number>;
-  shotClockViolations: number;
-  creaseViolations: number;
   longestNoShotTicks: number;
-  stuckPlayerIncidents: number;
+}
+
+const SUMMED_KEYS = [
+  'shots',
+  'saves',
+  'blocks',
+  'posts',
+  'passes',
+  'completions',
+  'interceptions',
+  'possessionChanges',
+  'scoops',
+  'scoopMisses',
+  'shotClockViolations',
+  'creaseViolations',
+  'stuckPlayerIncidents',
+] as const satisfies readonly (keyof Summed)[];
+
+export function emptyMatchStats(): MatchStats {
+  const stats = { ticks: 0, score: [0, 0], spellCasts: {}, longestNoShotTicks: 0 } as unknown as MatchStats;
+  for (const k of SUMMED_KEYS) stats[k] = 0;
+  return stats;
 }
 
 export function createReport(): Report {
-  return {
+  const report = {
     games: 0,
     totalTicks: 0,
     goals: 0,
     homeWins: 0,
     awayWins: 0,
     ties: 0,
-    shots: 0,
-    possessionChanges: 0,
-    scoops: 0,
-    scoopMisses: 0,
     spellCasts: {},
-    shotClockViolations: 0,
-    creaseViolations: 0,
     longestNoShotTicks: 0,
-    stuckPlayerIncidents: 0,
-  };
+  } as unknown as Report;
+  for (const k of SUMMED_KEYS) report[k] = 0;
+  return report;
 }
 
 export function recordMatch(report: Report, m: MatchStats): void {
@@ -63,17 +83,30 @@ export function recordMatch(report: Report, m: MatchStats): void {
   if (m.score[0] > m.score[1]) report.homeWins++;
   else if (m.score[1] > m.score[0]) report.awayWins++;
   else report.ties++;
-  report.shots += m.shots;
-  report.possessionChanges += m.possessionChanges;
-  report.scoops += m.scoops;
-  report.scoopMisses += m.scoopMisses;
+  for (const k of SUMMED_KEYS) report[k] += m[k];
   for (const [spell, n] of Object.entries(m.spellCasts)) {
     report.spellCasts[spell] = (report.spellCasts[spell] ?? 0) + n;
   }
-  report.shotClockViolations += m.shotClockViolations;
-  report.creaseViolations += m.creaseViolations;
   report.longestNoShotTicks = Math.max(report.longestNoShotTicks, m.longestNoShotTicks);
-  report.stuckPlayerIncidents += m.stuckPlayerIncidents;
+}
+
+/** Combines two reports (e.g. from worker threads) into a new one. */
+export function mergeReports(a: Report, b: Report): Report {
+  const out = createReport();
+  for (const r of [a, b]) {
+    out.games += r.games;
+    out.totalTicks += r.totalTicks;
+    out.goals += r.goals;
+    out.homeWins += r.homeWins;
+    out.awayWins += r.awayWins;
+    out.ties += r.ties;
+    for (const k of SUMMED_KEYS) out[k] += r[k];
+    for (const [spell, n] of Object.entries(r.spellCasts)) {
+      out.spellCasts[spell] = (out.spellCasts[spell] ?? 0) + n;
+    }
+    out.longestNoShotTicks = Math.max(out.longestNoShotTicks, r.longestNoShotTicks);
+  }
+  return out;
 }
 
 /** Balance-sanity checks from CLAUDE.md. Warnings until M6, then hard failures. */
@@ -97,37 +130,41 @@ export function balanceWarnings(report: Report): string[] {
   return warnings;
 }
 
+const pct = (n: number, d: number) => (d > 0 ? `${((100 * n) / d).toFixed(1)}%` : 'n/a');
+
 export function formatReport(
   report: Report,
   config: SimConfig,
-  meta: { games: number; baseSeed: number; elapsedMs: number },
+  meta: { games: number; baseSeed: number; elapsedMs: number; setup?: string },
 ): string {
   const g = Math.max(1, report.games);
+  const perGame = (n: number) => (n / g).toFixed(2);
   const secs = (ticks: number) => (ticks / config.tickHz).toFixed(1);
   const totalCasts = Object.values(report.spellCasts).reduce((a, b) => a + b, 0);
   const spellLines = Object.entries(report.spellCasts)
     .sort((a, b) => b[1] - a[1])
-    .map(
-      ([s, n]) =>
-        `    ${s.padEnd(16)} ${String(n).padStart(8)}  (${((100 * n) / Math.max(1, totalCasts)).toFixed(1)}%)`,
-    );
+    .map(([s, n]) => `    ${s.padEnd(16)} ${String(n).padStart(8)}  (${pct(n, totalCasts)})`);
   const decided = report.homeWins + report.awayWins;
   const warnings = balanceWarnings(report);
 
   return [
-    `Spellstick headless sim — ${meta.games} games, seeds ${meta.baseSeed}..${meta.baseSeed + meta.games - 1}`,
+    `Spellstick headless sim — ${meta.games} games, seeds ${meta.baseSeed}..${meta.baseSeed + meta.games - 1}` +
+      (meta.setup ? ` (${meta.setup})` : ''),
     `  run time                    ${(meta.elapsedMs / 1000).toFixed(2)} s`,
     `  avg match length            ${secs(report.totalTicks / g)} s game time`,
-    `  goals per game              ${(report.goals / g).toFixed(2)}`,
-    `  shots per goal              ${report.goals > 0 ? (report.shots / report.goals).toFixed(2) : 'n/a'}`,
-    `  possession changes / game   ${(report.possessionChanges / g).toFixed(2)}`,
-    `  scoops / game               ${(report.scoops / g).toFixed(2)}  (success ${report.scoops + report.scoopMisses > 0 ? ((100 * report.scoops) / (report.scoops + report.scoopMisses)).toFixed(1) : 'n/a'}%)`,
+    `  goals per game              ${perGame(report.goals)}`,
+    `  shots per game              ${perGame(report.shots)}`,
+    `  shots per goal              ${report.goals > 0 ? (report.shots / report.goals).toFixed(2) : 'n/a'}  (shooting ${pct(report.goals, report.shots)})`,
+    `  saves / blocks / posts      ${perGame(report.saves)} / ${perGame(report.blocks)} / ${perGame(report.posts)} per game  (save rate ${pct(report.saves, report.saves + report.goals)})`,
+    `  passes per game             ${perGame(report.passes)}  (completed ${pct(report.completions, report.passes)}, intercepted ${pct(report.interceptions, report.passes)})`,
+    `  possession changes / game   ${perGame(report.possessionChanges)}`,
+    `  scoops / game               ${perGame(report.scoops)}  (success ${pct(report.scoops, report.scoops + report.scoopMisses)})`,
     `  home / away / tied          ${report.homeWins} / ${report.awayWins} / ${report.ties}` +
-      (decided > 0 ? `  (home win ${((100 * report.homeWins) / decided).toFixed(1)}%)` : ''),
+      (decided > 0 ? `  (home win ${pct(report.homeWins, decided)})` : ''),
     `  spell casts                 ${totalCasts}`,
     ...spellLines,
-    `  shot-clock violations       ${report.shotClockViolations}  (${(report.shotClockViolations / g).toFixed(2)} / game)`,
-    `  crease violations           ${report.creaseViolations}  (${(report.creaseViolations / g).toFixed(2)} / game)`,
+    `  shot-clock violations       ${report.shotClockViolations}  (${perGame(report.shotClockViolations)} / game)`,
+    `  crease violations           ${report.creaseViolations}  (${perGame(report.creaseViolations)} / game)`,
     `  longest stretch w/o a shot  ${secs(report.longestNoShotTicks)} s`,
     `  stuck-player incidents      ${report.stuckPlayerIncidents}`,
     warnings.length > 0

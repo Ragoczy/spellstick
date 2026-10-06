@@ -38,6 +38,8 @@ export const DEFAULT_CONFIG = {
   match: {
     periods: 4,
     periodSeconds: 150,
+    /** Dead-ball pause after a goal before play restarts (s). The game clock stops. */
+    goalPauseSeconds: 2,
   },
 
   player: {
@@ -71,6 +73,89 @@ export const DEFAULT_CONFIG = {
     boardTangentKeep: 0.9,
     /** Fraction of normal speed kept after hitting the goal frame. */
     goalRestitution: 0.5,
+    /** Speed-proportional drag while a pass or shot is in the air (per second). */
+    airDrag: 0.15,
+  },
+
+  pass: {
+    /** Launch speed of a pass (m/s). */
+    speed: 17,
+    /** A press shorter than this is a pass; longer starts charging a shot (s). */
+    tapSeconds: 0.18,
+    /** Teammates within this half-angle of the aim direction get assist magnetism (degrees). */
+    coneHalfAngleDeg: 22,
+    /** Teammates farther than this don't get assist magnetism (m). */
+    maxAssistRange: 32,
+    /** How hard an assisted pass bends toward the receiver in flight (degrees per second). */
+    homingDegPerSec: 70,
+    /** A pass stays in the air this long, then lands and rolls (s). */
+    airSeconds: 1.1,
+  },
+
+  catch: {
+    /** An in-flight pass this close to a player's stick head can be caught (m). */
+    radius: 1.0,
+    /** Catch chance for the passing team at low relative speed... */
+    chanceSlow: 0.95,
+    /** ...falling to this at `fastRelSpeed` relative speed. */
+    chanceFast: 0.75,
+    /** Interception chance for the other team at low relative speed... */
+    interceptSlow: 0.6,
+    /** ...falling to this at `fastRelSpeed`. */
+    interceptFast: 0.3,
+    /** Relative speed (m/s) at which catch chances bottom out. */
+    fastRelSpeed: 22,
+    /** A dropped pass keeps this fraction of its speed... */
+    dropSpeedKeep: 0.3,
+    /** ...and veers up to this many degrees off its path. */
+    dropScatterDeg: 50,
+  },
+
+  shot: {
+    /** Speed of a shot released right after the tap window (m/s). */
+    minSpeed: 18,
+    /** Speed of a fully charged shot (m/s). */
+    maxSpeed: 32,
+    /** Hold time for a full charge, counted from the start of the press (s). */
+    fullChargeSeconds: 1.0,
+    /** Move speed multiplier while charging a shot. */
+    chargeMoveMultiplier: 0.75,
+    /** Aim error for a standing shot (degrees, max either side). */
+    spreadStandingDeg: 1.5,
+    /** Extra aim error at full running speed (degrees). */
+    spreadRunningDeg: 4,
+    /** A shot stays in the air this long, then lands and rolls (s). */
+    airSeconds: 1.4,
+    /** Chance an opposing runner's body blocks a shot that hits them. */
+    blockChance: 0.6,
+    /** A blocked shot keeps this fraction of its speed. */
+    blockSpeedKeep: 0.35,
+  },
+
+  goalie: {
+    /** Goalies move a bit slower than runners but react sharper. */
+    maxSpeed: 6.5,
+    accel: 45,
+    /** A shot passing within this distance of the goalie's center can be saved (m). */
+    saveRadius: 1.05,
+    /** Save chance for a slow shot straight at the goalie (the result is capped at 97%)... */
+    saveBase: 1.08,
+    /** ...minus up to this much for a full-speed shot... */
+    saveSpeedPenalty: 0.15,
+    /** ...minus up to this much for a shot at the edge of the goalie's reach... */
+    saveEdgePenalty: 0.6,
+    /** ...minus up to this much for a shot released very close to the goalie. */
+    saveReactionPenalty: 0.3,
+    /** Shots released farther than this from the goalie take no reaction penalty (m). */
+    reactionDistance: 8,
+    /** Of successful saves, this fraction are caught clean; the rest are rebounds. */
+    catchFraction: 0.4,
+    /** A rebound keeps this fraction of the shot's speed. */
+    reboundSpeedKeep: 0.35,
+    /** Rebounds scatter up to this many degrees either side of straight out (degrees). */
+    reboundScatterDeg: 65,
+    /** Chance a goalie gets a stick on a pass that comes within save range. */
+    passInterceptChance: 0.7,
   },
 
   scoop: {
@@ -101,8 +186,6 @@ export const DEFAULT_CONFIG = {
   debug: {
     /** Speed added in the facing direction when dropping the ball (m/s). */
     dropPush: 1,
-    /** Speed of the debug toss toward the cursor (m/s). */
-    tossSpeed: 14,
   },
 } as const;
 

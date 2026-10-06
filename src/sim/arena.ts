@@ -48,3 +48,15 @@ export function arenaGeometry(config: SimConfig): ArenaGeometry {
     goals: [goal(0), goal(1)],
   };
 }
+
+const arenaCache = new WeakMap<SimConfig, ArenaGeometry>();
+
+/** Cached `arenaGeometry` for a config object. */
+export function arenaFor(config: SimConfig): ArenaGeometry {
+  let arena = arenaCache.get(config);
+  if (!arena) {
+    arena = arenaGeometry(config);
+    arenaCache.set(config, arena);
+  }
+  return arena;
+}

@@ -16,4 +16,6 @@ new Phaser.Game({
 });
 
 mountBuildTag();
-mountControlsHint('WASD move  ·  mouse aims the stick  ·  G drop ball  ·  T toss ball (debug keys)');
+mountControlsHint(
+  'WASD move  ·  mouse aims  ·  click: pass  ·  hold + release: shoot  ·  G: drop ball (debug)',
+);

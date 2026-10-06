@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { makeConfig } from '../src/sim';
-import { balanceWarnings, createReport, formatReport, recordMatch } from './report';
+import { balanceWarnings, createReport, formatReport, mergeReports, recordMatch } from './report';
 import { runMatch } from './runMatch';
 
 describe('headless sim runner', () => {
   it('runs a match to the final whistle', () => {
     const config = makeConfig({ match: { periodSeconds: 5 } });
     const stats = runMatch(config, 1);
-    expect(stats.ticks).toBe(4 * 5 * 60);
+    // Goal pauses stop the clock, so a match lasts at least its regulation time.
+    expect(stats.ticks).toBeGreaterThanOrEqual(4 * 5 * 60);
   });
 
   it('AI duel picks up the ball and nobody gets stuck', () => {
@@ -26,6 +27,18 @@ describe('headless sim runner', () => {
     const text = formatReport(report, makeConfig(), { games: 1, baseSeed: 1, elapsedMs: 1 });
     expect(text).toContain('goals per game');
     expect(text).toContain('stuck-player incidents');
+  });
+
+  it('merging per-worker reports equals recording everything in one', () => {
+    const config = makeConfig({ match: { periodSeconds: 10 } });
+    const matches = [1, 2, 3, 4].map((seed) => runMatch(config, seed));
+    const whole = createReport();
+    matches.forEach((m) => recordMatch(whole, m));
+    const a = createReport();
+    const b = createReport();
+    matches.slice(0, 2).forEach((m) => recordMatch(a, m));
+    matches.slice(2).forEach((m) => recordMatch(b, m));
+    expect(mergeReports(a, b)).toEqual(whole);
   });
 
   it('flags a spell above 40% of casts', () => {

@@ -91,7 +91,7 @@ describe('Hex Shove (Q)', () => {
     const events = run(state, config, 1, [cast('hexShove')]);
     const shove = events.find((e) => e.type === 'hexShove');
     expect(shove).toMatchObject({ hits: [1] }); // not the one off to the side or behind
-    expect(state.players[1]!.vel.x).toBeGreaterThan(5);
+    expect(state.players[1]!.vel.x).toBeGreaterThan(config.spells.hexShove.knockbackSpeed * 0.9);
     expect(state.players[1]!.staggerTicks).toBeGreaterThan(0);
     expect(state.players[2]!.staggerTicks).toBe(0);
     expect(state.players[3]!.staggerTicks).toBe(0);

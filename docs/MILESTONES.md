@@ -37,6 +37,12 @@ Each milestone ends at a gate (see CLAUDE.md): tests pass, the sim is clean, PLA
 - Mana bars, the three runner spells, and the goalie's Ward, per SPEC §6.
 - AI spell use; spell visuals with the gold-orange glow.
 - **Done when:** the sim shows every spell being used, with no single spell above 40% of casts, and matches still land in the goals-per-game band.
+- From Paul's M5 playtest (2026-10-06): "slow the movement down a bit. Cut it to half-speed."
+  - [x] Halve player movement: runner and goalie top speed, acceleration, and friction (same feel, half the pace).
+  - [x] Scale movement-like effects with it: check dash and knockback, Hex Shove knockback, the goalie-protection bounce, and the board-slam threshold.
+  - [x] Keep ball speeds (passes, shots) as they are.
+  - [x] Re-run the sim; retune if goals per game leave the 6–20 band or a spell goes over 40%; no stuck players.
+  - [x] Fix any tests that assumed the old speeds; re-gate.
 
 ## M6 — Screens, polish, balance
 - Title, team select (with difficulty), and results screens.

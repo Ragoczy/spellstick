@@ -101,7 +101,7 @@ describe('body checks (SPEC §4.5)', () => {
 
   it('a hit cancels a shot being wound up', () => {
     const config = makeConfig({ check: { looseChance: 0 } });
-    const { state } = setup([checker, victim(3)], config);
+    const { state } = setup([checker, victim(2.2)], config);
     state.ball.carrier = 1;
     run(state, config, 30, [cmd(), cmd({ x: 0, y: 0 }, { primary: true })]);
     expect(state.players[1]!.primaryTicks).toBeGreaterThan(20);

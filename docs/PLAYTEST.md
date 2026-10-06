@@ -1,19 +1,22 @@
-# Playtest notes — M5 (Mana and spells)
+# Playtest notes — M5 re-gate (half-speed movement)
 
 **Build:** https://ragoczy.github.io/spellstick/ (the git SHA is in the bottom-right corner)
 
-The spell names and effects are placeholders from the spec. They're all in one file (`src/content/spells.ts`) for when you have the real ones.
+## What changed since the M5 build
 
-## What changed
+- **Movement is half speed**, as you asked. Runners top out at 3.75 m/s (was 7.5) and goalies at 3.25 (was 6.5). Acceleration and the stop-glide were halved too, so it feels the same, just slower.
+- **Things that move players were scaled to match:** the check dash, check knockback, Hex Shove knockback, the bounce off a goalie in the crease, and how hard a board slam has to be.
+- **Ball speeds are unchanged**, since you said movement. Passes and shots fly as before, so the ball now outruns players by more. If you meant the whole game at half speed, that's a quick change.
+- **Retuned so AI-vs-AI matches still land in the 6–20 goals band:**
+  - The AI shoots from about 2 m farther out.
+  - It checks about 40% less often, which also helps your "too chaotic" note: 76 checks a game, down from 115.
+  - It uses Quickstep less and Bent Shot a bit less.
+  - Bodies block fewer shots.
+  - Goalies are a touch weaker on corner shots.
+  - The Ward recharges every 4 minutes instead of 3.
+- **Headless sim (1,000 full matches):** 6.5 goals per game. Spell casts: Bent Shot 36%, Quickstep 33%, Hex Shove 23%, Ward 8% (none above 40%). Home win 48.9%, 0 stuck players. Shot-clock violations now happen (0.2 a game): possessions are slower, so the clock actually bites.
 
-- **Mana:** each runner has a mana bar (bottom-left, under the Q/E/R icons). It refills slowly, a bit faster when you don't have the ball. The little ticks on the bar mark what each spell costs.
-- **Q — Hex Shove** (50 mana, 10 s cooldown): a gold cone blast in the direction your stick points. Everyone on the other team inside it is knocked back and dazed, and a ball carrier it hits always loses the ball. It doesn't move a goalie standing in their crease.
-- **E — Quickstep** (30 mana, 8 s): 40% faster for 2.5 seconds. You get a gold aura.
-- **R — Bent Shot** (25 mana, 5 s): arms your next shot (your stick head pulses gold). Aim at a corner and shoot: the ball starts out wide of the post, as if it's going to miss, then curls back in onto your cursor, leaving a gold trail. The goalie reads it badly.
-- **Ward (goalies, automatic):** a goalie can throw up a gold shield across the goal mouth that blocks one shot that beat them. It has a 3-minute cooldown, so each goalie gets about one per period. The AI goalie decides when.
-- **Spell icons:** each shows its key, a dark shutter that lowers as it recharges, dims when you can't afford it, and lights gold while it's active or armed.
-- **The AI casts too:** Hex Shove mostly against a shooter winding up or a carrier right on top of its goal, Quickstep on breakaways and races for loose balls, Bent Shot on a lot of its shots.
-- **Headless sim (1,000 full matches):** 6.4 goals per game. 83 casts per game, none above 40% of casts: Quickstep 36%, Bent Shot 33%, Hex Shove 26%, Ward 6%. Ward blocks about 3 goals a game, home win 50.8%, 0 stuck players.
+Everything else from the M5 build is the same: mana, Q (Hex Shove), E (Quickstep), R (Bent Shot), and the goalie's automatic Ward. See the spell list in `src/content/spells.ts`.
 
 ## How to run
 
@@ -22,18 +25,16 @@ The spell names and effects are placeholders from the spec. They're all in one f
 
 ## Things to try
 
-1. Press R, then wind up a shot at a top or bottom corner from about 9 m. Watch it bend. Compare with a normal shot from the same spot.
-2. On defense, get close to the carrier (Space to switch), point your stick at them, and press Q.
-3. Press E with the ball and some open floor ahead. Is the speed boost noticeable?
-4. Shoot hard from close in and see if the goalie throws up a Ward.
-5. Spend all your mana and see how long it takes to come back. Is the regen too slow to matter?
-6. Watch the AI: does its spell use look smart, or random and spammy?
+1. Run end to end. It takes about 16 seconds now. Is the pace right, or did half overshoot?
+2. Pass to a teammate who's running. With the ball relatively faster, do passes feel too quick or hard to lead?
+3. Use Quickstep. At the slower base speed, does the 40% boost feel more meaningful?
+4. Shoot from about 9 m at a corner with nobody in the way, then straight at the goalie.
+5. Throw some checks. Do the hits still feel like hits at the smaller knockback?
+6. Play a full period and see whether it feels less chaotic.
 
 ## Questions for you
 
-1. Which spell feels best? Which feels weakest or most pointless?
-2. Is Hex Shove too strong? It always strips the ball, which is what the spec says, so the cost and cooldown are what keep it in check.
-3. Does Bent Shot read as "curves toward the cursor side"? I made it a banana shot that swings in from outside the post; say if you pictured something different.
-4. Is mana regen too slow (you rarely get to cast) or too fast (spells all the time)?
-5. Is the Ward fun, or does it just feel like being robbed?
-6. Are the spell visuals readable mid-chaos?
+1. Is half speed right, or would you like something in between (two-thirds, say)?
+2. Should the ball slow down too, so the whole game runs at half pace?
+3. **Shooting might be too easy now.** An open, well-placed hard shot from 9 m scores about 57% (it was about 35%); straight at the goalie, about 33%. The half-speed goalie can't get across as fast, and I weakened its saves a little to keep AI scoring in range. In real play most shots are contested (the AI shoots 22%). Does open shooting feel too easy?
+4. Do checks and Hex Shove still have enough punch at half the knockback?

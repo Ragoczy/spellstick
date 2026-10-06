@@ -66,13 +66,13 @@ export const DEFAULT_CONFIG = {
     /** Body radius. */
     radius: 0.6,
     /** Top running speed. */
-    maxSpeed: 7.5,
+    maxSpeed: 3.75,
     /** Top speed multiplier while carrying the ball. */
     carrySpeedMultiplier: 0.92,
     /** How fast velocity moves toward the desired velocity while steering (m/s²). */
-    accel: 32,
+    accel: 16,
     /** How fast velocity bleeds off with no move input (m/s²). */
-    friction: 24,
+    friction: 12,
     /** Distance from body center to the stick head, where a carried ball sits. */
     stickReach: 0.95,
     /** Fraction of normal speed kept when a player runs into the boards (0 = dead stop). */
@@ -147,23 +147,23 @@ export const DEFAULT_CONFIG = {
     /** A shot stays in the air this long, then lands and rolls (s). */
     airSeconds: 1.4,
     /** Chance an opposing runner's body blocks a shot that hits them. */
-    blockChance: 0.5,
+    blockChance: 0.35,
     /** A blocked shot keeps this fraction of its speed. */
     blockSpeedKeep: 0.35,
   },
 
   goalie: {
     /** Goalies move a bit slower than runners but react sharper. */
-    maxSpeed: 6.5,
-    accel: 45,
+    maxSpeed: 3.25,
+    accel: 22.5,
     /** A shot passing within this distance of the goalie's center can be saved (m). */
     saveRadius: 1.05,
     /** Save chance for a slow shot straight at the goalie (the result is capped at 97%)... */
-    saveBase: 1.08,
+    saveBase: 0.95,
     /** ...minus up to this much for a full-speed shot... */
     saveSpeedPenalty: 0.15,
     /** ...minus up to this much for a shot at the edge of the goalie's reach... */
-    saveEdgePenalty: 0.6,
+    saveEdgePenalty: 0.7,
     /** ...minus up to this much for a shot released very close to the goalie. */
     saveReactionPenalty: 0.3,
     /** Shots released farther than this from the goalie take no reaction penalty (m). */
@@ -198,14 +198,14 @@ export const DEFAULT_CONFIG = {
   /** Body checks (SPEC §4.5–4.6): right click dashes in the move direction. */
   check: {
     /** Dash speed (m/s) and duration (s). */
-    dashSpeed: 11,
+    dashSpeed: 5.5,
     dashSeconds: 0.18,
     /** Time from one check to the next (s), counted from the start of the dash. */
     cooldownSeconds: 1.4,
     /** A dash hits an opponent whose center comes within two body radii plus this (m). */
     reach: 0.3,
     /** Speed added to the player who gets hit, along the dash direction (m/s). */
-    knockbackSpeed: 8,
+    knockbackSpeed: 4,
     /** How long a hit player loses control (s). */
     staggerSeconds: 0.6,
     /** Chance a hit on the ball carrier knocks the ball loose. */
@@ -216,11 +216,11 @@ export const DEFAULT_CONFIG = {
     /** Fraction of the dash speed the checker keeps after the hit. */
     checkerKeep: 0.3,
     /** A staggered player slammed into the boards faster than this (m/s)... */
-    boardSlamSpeed: 3,
+    boardSlamSpeed: 1.5,
     /** ...is staggered this much longer (s). */
     boardSlamExtraSeconds: 0.4,
     /** Goalie protection: a checker bounces off a goalie in their crease at this speed (m/s)... */
-    goalieBounceSpeed: 5,
+    goalieBounceSpeed: 2.5,
     /** ...and is staggered this long (s). */
     goalieBounceStaggerSeconds: 0.4,
   },
@@ -244,7 +244,7 @@ export const DEFAULT_CONFIG = {
       /** ...and this half-angle of where the stick points (degrees) are hit. */
       coneHalfAngleDeg: 35,
       /** Knockback speed (m/s) and stagger (s) for each player hit. */
-      knockbackSpeed: 9,
+      knockbackSpeed: 4.5,
       staggerSeconds: 0.6,
       /** A carrier who gets hit always loses the ball, which pops out at this speed (m/s). */
       looseSpeed: 6,
@@ -267,7 +267,7 @@ export const DEFAULT_CONFIG = {
       savePenalty: 0.25,
     },
     ward: {
-      cooldownSeconds: 180,
+      cooldownSeconds: 240,
       /** The shield stays up this long (s) or until it blocks one shot. */
       durationSeconds: 1.0,
       /** A warded shot bounces back out at this fraction of its speed. */
@@ -288,11 +288,11 @@ export const DEFAULT_CONFIG = {
         /** Random error in where the AI aims at the goal (m, either side). */
         aimErrorM: 0.45,
         /** Shoots from at most this far out. */
-        shootRange: 10,
+        shootRange: 12,
         /** A pass lane counts as open if no opponent is within this distance of it. */
         passLaneClearance: 1.6,
         /** Per-tick chance of throwing a check when one is available (higher vs a shooter winding up). */
-        checkChancePerTick: 0.002,
+        checkChancePerTick: 0.0012,
         /** Goalie reaction time to a shot. */
         goalieReactionSeconds: 0.22,
         /** Faceoff press after the whistle: this long, plus up to faceoffWindowSeconds more at random. */
@@ -306,9 +306,9 @@ export const DEFAULT_CONFIG = {
       normal: {
         reactionSeconds: 0.17,
         aimErrorM: 0.25,
-        shootRange: 11,
+        shootRange: 13,
         passLaneClearance: 2.2,
-        checkChancePerTick: 0.004,
+        checkChancePerTick: 0.0025,
         goalieReactionSeconds: 0.13,
         faceoffReactionSeconds: 0.12,
         faceoffWindowSeconds: 0.25,
@@ -318,9 +318,9 @@ export const DEFAULT_CONFIG = {
       hard: {
         reactionSeconds: 0.1,
         aimErrorM: 0.12,
-        shootRange: 12,
+        shootRange: 14,
         passLaneClearance: 2.4,
-        checkChancePerTick: 0.007,
+        checkChancePerTick: 0.0045,
         goalieReactionSeconds: 0.08,
         faceoffReactionSeconds: 0.1,
         faceoffWindowSeconds: 0.15,
@@ -374,7 +374,7 @@ export const DEFAULT_CONFIG = {
       /** Off-ball attackers keep at least this far from their nearest defender if they can. */
       getOpenRadius: 2.5,
       /** Off the ball, keep at least this far from teammates (m). */
-      teammateSpacing: 2.2,
+      teammateSpacing: 1.6,
       /** Look this far ahead (m) for a goal frame in the way, and slide around it. */
       goalLookahead: 2.5,
       /** Stay this far outside the opponent's crease (m). */
@@ -396,10 +396,10 @@ export const DEFAULT_CONFIG = {
       /** ...or racing an opponent to a loose ball that's this close (m). */
       quickstepRaceDistance: 6,
       /** Per-tick chances (times spellEagerness) of Quickstep in those two situations. */
-      quickstepBreakawayChancePerTick: 0.02,
-      quickstepRaceChancePerTick: 0.003,
+      quickstepBreakawayChancePerTick: 0.01,
+      quickstepRaceChancePerTick: 0.0015,
       /** Chance (times spellEagerness) of arming Bent Shot before a shot when it's ready. */
-      bentShotChance: 0.6,
+      bentShotChance: 0.5,
     },
     goalie: {
       /** Distance in front of the goal line the goalie patrols. */
@@ -419,9 +419,9 @@ export const DEFAULT_CONFIG = {
 
   /** Health checks reported by the headless sim. */
   diagnostics: {
-    /** A player within `stuckRadius` meters of one spot for longer than this, during live play, is "stuck". */
+    /** A player within `stuckRadius` meters of one spot for longer than this, during live play, is "stuck". The radius is about 2.7% of the distance a runner covers in that time at top speed. */
     stuckSeconds: 5,
-    stuckRadius: 1,
+    stuckRadius: 0.5,
   },
 
   /** Debug-only actions for playtesting. */

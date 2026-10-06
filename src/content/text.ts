@@ -17,7 +17,6 @@ export const TEXT = {
     overtime ? 'Sudden-death overtime next' : `${periodName(n)} coming up`,
   final: 'FINAL',
   finalOvertime: 'FINAL (OT)',
-  playAgain: 'Click to play again',
   shotClock: 'SHOT',
 } as const;
 

@@ -27,19 +27,23 @@ export class Hud {
   private bannerUntil = 0;
   private subUntil = 0;
   private shotKey = '';
+  private overlaysEnabled = true;
+  private readonly names: [Phaser.GameObjects.Text, Phaser.GameObjects.Text];
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly config: SimConfig,
-    private readonly teams: [TeamInfo, TeamInfo],
+    private teams: [TeamInfo, TeamInfo],
   ) {
     const serif = 'Georgia, serif';
     scene.add
       .text(24, 30, 'SPELLSTICK', { fontFamily: serif, fontSize: '20px', color: toCss(PALETTE.mana) })
       .setOrigin(0, 0.5);
     const name = (t: TeamInfo) => ({ fontFamily: serif, fontSize: '22px', color: toCss(t.color) });
-    scene.add.text(CX - 170, 30, teams[0].name, name(teams[0])).setOrigin(1, 0.5);
-    scene.add.text(CX + 170, 30, teams[1].name, name(teams[1])).setOrigin(0, 0.5);
+    this.names = [
+      scene.add.text(CX - 170, 30, teams[0].name, name(teams[0])).setOrigin(1, 0.5),
+      scene.add.text(CX + 170, 30, teams[1].name, name(teams[1])).setOrigin(0, 0.5),
+    ];
     const big = { fontFamily: serif, fontSize: '36px', color: toCss(PALETTE.text) };
     this.scores = [
       scene.add.text(CX - 120, 30, '0', big).setOrigin(0.5),
@@ -98,6 +102,18 @@ export class Hud {
       .setVisible(false);
   }
 
+  /** Switches the scoreboard to a new pair of teams. */
+  setTeams(teams: [TeamInfo, TeamInfo]): void {
+    this.teams = teams;
+    teams.forEach((t, i) => this.names[i]!.setText(t.name).setColor(toCss(t.color)));
+    this.shotKey = '';
+  }
+
+  /** Turns banners and the break/final overlays on or off (off for the title-screen demo). */
+  setOverlaysEnabled(on: boolean): void {
+    this.overlaysEnabled = on;
+  }
+
   /** Shows a callout for `ms`, with an optional smaller line under it. */
   flash(text: string, ms: number, color: number = PALETTE.mana, sub = ''): void {
     const now = this.scene.time.now;
@@ -136,17 +152,16 @@ export class Hud {
     }
 
     const scoreLine = `${this.teams[0].name} ${s.score[0]}  –  ${s.score[1]} ${this.teams[1].name}`;
-    if (s.phase === 'periodBreak') {
+    if (!this.overlaysEnabled) {
+      this.overlay.setVisible(false);
+      this.banner.setText('');
+      this.sub.setText('');
+    } else if (s.phase === 'periodBreak') {
       const next = s.period + 1;
       const overtime = next > this.config.match.periods;
       this.showOverlay(TEXT.endOfPeriod(s.period), scoreLine, TEXT.nextUp(next, overtime));
-    } else if (s.phase === 'final') {
-      this.showOverlay(
-        s.period > this.config.match.periods ? TEXT.finalOvertime : TEXT.final,
-        scoreLine,
-        TEXT.playAgain,
-      );
     } else {
+      // The final whistle hands over to the results screen (src/ui).
       this.overlay.setVisible(false);
     }
   }

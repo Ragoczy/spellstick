@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Screenshots of match-flow screens for manual review.
+// Screenshots of each screen for manual review.
 type Handle = { fastForwardTo: (phase: string) => void; state: { phase: string } };
 const ff = (page: Page, phase: string) =>
   page.evaluate((p) => {
@@ -9,16 +9,22 @@ const ff = (page: Page, phase: string) =>
     return h.state.phase;
   }, phase);
 
-test('faceoff, spells, period break, and final screens', async ({ page }) => {
+test('title, team select, faceoff, spells, period break', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('./');
-  await page.waitForFunction(
-    () => (window as unknown as { __spellstick?: unknown }).__spellstick !== undefined,
-  );
-  await page.waitForTimeout(400);
+  await expect(page.getByRole('heading', { name: 'SPELLSTICK' })).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: 'test-results/title.png' });
+
+  await page.getByRole('button', { name: 'Play' }).click();
+  await page.locator('[data-team="willowmere"][data-side="home"]').click();
+  await page.screenshot({ path: 'test-results/team-select.png' });
+  await page.getByRole('button', { name: 'Start match' }).click();
+  await page.getByRole('button', { name: 'Face off!' }).click();
+  await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/faceoff.png' });
 
-  // Get to live play (jump the whistle), then cast Quickstep, Bent Shot, and Hex Shove.
+  // Live play (jump the whistle), then cast Quickstep, Bent Shot, and Hex Shove.
   await page.mouse.click(640, 380);
   await page.waitForTimeout(300);
   await page.keyboard.press('e');
@@ -34,8 +40,4 @@ test('faceoff, spells, period break, and final screens', async ({ page }) => {
   expect(await ff(page, 'periodBreak')).toBe('periodBreak');
   await page.waitForTimeout(150);
   await page.screenshot({ path: 'test-results/period-break.png' });
-
-  expect(await ff(page, 'final')).toBe('final');
-  await page.waitForTimeout(150);
-  await page.screenshot({ path: 'test-results/final.png' });
 });

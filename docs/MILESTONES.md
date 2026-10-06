@@ -49,7 +49,7 @@ Each milestone ends at a gate (see CLAUDE.md): tests pass, the sim is clean, PLA
 - Announcer text callouts; simple sound effects with a mute toggle.
 - A balance pass using sim stats; Easy, Normal, and Hard feel distinct.
 - Balance thresholds in CLAUDE.md become hard test failures.
-- From Paul's M3 playtest (2026-10-06): "a little too chaotic"; tune it down in the balance pass. Levers to try, checked against the sim: fewer AI checks (`checkChancePerTick`), a lower strip chance (`check.looseChance`), longer check cooldown, fewer possession changes per game (M3 sim: ~72), and longer settled possessions before shots.
+- [x] From Paul's M3 playtest (2026-10-06): "a little too chaotic"; tune it down in the balance pass. Levers to try, checked against the sim: fewer AI checks (`checkChancePerTick`), a lower strip chance (`check.looseChance`), longer check cooldown, fewer possession changes per game (M3 sim: ~72), and longer settled possessions before shots. Done: AI checks 115 → 76 a game, strip chance 40% → 35%, possession changes 72 → 46 a game.
 - **Done when:** a new player can open the link, pick teams, and play a full match without instructions beyond a one-screen controls card.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)

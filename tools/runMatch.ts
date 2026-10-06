@@ -3,6 +3,7 @@ import {
   createMatch,
   matchRoster,
   stepMatch,
+  type Difficulty,
   type InputCommand,
   type SimConfig,
   type TeamIndex,
@@ -11,9 +12,13 @@ import { emptyMatchStats, type MatchStats } from './report';
 import { StuckTracker } from './stuck';
 
 /** Plays one headless AI-vs-AI match to the final whistle and returns its stats. */
-export function runMatch(config: SimConfig, seed: number): MatchStats {
+export function runMatch(
+  config: SimConfig,
+  seed: number,
+  levels: [Difficulty, Difficulty] = ['normal', 'normal'],
+): MatchStats {
   const state = createMatch(config, seed, matchRoster(config), { start: 'faceoff' });
-  const controllers = createTeamControllers(state, config, seed);
+  const controllers = createTeamControllers(state, config, seed, levels);
   const stats = emptyMatchStats();
 
   const stuck = new StuckTracker(config);

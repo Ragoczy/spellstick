@@ -1,40 +1,42 @@
-# Playtest notes — M5 re-gate (half-speed movement)
+# Playtest notes — M6 (Screens, polish, balance)
 
 **Build:** https://ragoczy.github.io/spellstick/ (the git SHA is in the bottom-right corner)
 
-## What changed since the M5 build
+This is the full v1 loop. Try it the way a reader from Discord or Patreon would: open the link cold and see if you can get into a match without help.
 
-- **Movement is half speed**, as you asked. Runners top out at 3.75 m/s (was 7.5) and goalies at 3.25 (was 6.5). Acceleration and the stop-glide were halved too, so it feels the same, just slower.
-- **Things that move players were scaled to match:** the check dash, check knockback, Hex Shove knockback, the bounce off a goalie in the crease, and how hard a board slam has to be.
-- **Ball speeds are unchanged**, since you said movement. Passes and shots fly as before, so the ball now outruns players by more. If you meant the whole game at half speed, that's a quick change.
-- **Retuned so AI-vs-AI matches still land in the 6–20 goals band:**
-  - The AI shoots from about 2 m farther out.
-  - It checks about 40% less often, which also helps your "too chaotic" note: 76 checks a game, down from 115.
-  - It uses Quickstep less and Bent Shot a bit less.
-  - Bodies block fewer shots.
-  - Goalies are a touch weaker on corner shots.
-  - The Ward recharges every 4 minutes instead of 3.
-- **Headless sim (1,000 full matches):** 6.5 goals per game. Spell casts: Bent Shot 36%, Quickstep 33%, Hex Shove 23%, Ward 8% (none above 40%). Home win 48.9%, 0 stuck players. Shot-clock violations now happen (0.2 a game): possessions are slower, so the clock actually bites.
+## What changed
 
-Everything else from the M5 build is the same: mana, Q (Hex Shove), E (Quickstep), R (Bent Shot), and the goalie's automatic Ward. See the spell list in `src/content/spells.ts`.
+- **Title screen**, with an AI-vs-AI match playing behind it, a credit line for the Warlock series, Play, and Controls.
+- **Team select:** pick your team (Wyverns, Ichthyocentaurs, or Willowmere Witches), the opponent, and Easy, Normal, or Hard. It remembers your last choice. You always play the left side; difficulty sets the opponents, and your AI teammates are always Normal.
+- **Controls card:** one screen with every control and four tips. It shows before your first match, and from the title and pause menus.
+- **Pause (Esc):** Resume, Controls, or Quit to title.
+- **Results:** final score (and "OT" if it went there), who won, and shots, saves, hits, and spells cast for each team. Then Rematch or Main menu.
+- **Announcer:** text callouts at the bottom of the screen for goals, saves, Ward blocks, big hits, pile-ups, strips, shot-clock and crease calls. It uses all three canon exclamations ("Child's Tantrum!", "Crone's Corns!", "Third-witch in!"); everything else is plain sports filler and lives in `src/content/announcer.ts`.
+- **Sound:** a hit thump, a pass whoosh, a shot crack, a goal horn, a whistle, and a spell shimmer. They're generated in the browser, so there are no audio files. Toggle with M or the button in the top-right corner.
+- **Balance:**
+  - Difficulties are distinct but beatable. Measured as a Normal AI team against each: it beats Easy 78%, Normal about 50%, Hard 30%.
+  - Less chaotic, per your M3 note: about 76 checks a game (was 115), a check strips the ball 35% of the time (was 40%), and about 46 possession changes a game (was 72).
+  - The CLAUDE.md thresholds are now a hard CI gate over 1,000 games: 6.6 goals per game, no spell above 36% of casts, home win 52.6%, 0 stuck players.
 
 ## How to run
 
-- Play: open the build link above. Click the page once if keys don't respond.
+- Play: open the build link above.
 - Local: `npm install`, then `npm run dev`.
 
 ## Things to try
 
-1. Run end to end. It takes about 16 seconds now. Is the pace right, or did half overshoot?
-2. Pass to a teammate who's running. With the ball relatively faster, do passes feel too quick or hard to lead?
-3. Use Quickstep. At the slower base speed, does the 40% boost feel more meaningful?
-4. Shoot from about 9 m at a corner with nobody in the way, then straight at the goalie.
-5. Throw some checks. Do the hits still feel like hits at the smaller knockback?
-6. Play a full period and see whether it feels less chaotic.
+1. Open the link cold. Without reading anything but the controls card, can you get into a match and play a full one?
+2. Play a match on each difficulty. Does Easy feel winnable for someone new, and Hard actually hard?
+3. Score a goal and land a big hit into the boards; listen to the sound and watch for the announcer.
+4. Pause mid-match with Esc, open Controls from there, then resume.
+5. Finish a match and read the results screen. Then try Rematch, and Main menu.
+6. Toggle sound with M, reload, and check that it stayed muted.
 
 ## Questions for you
 
-1. Is half speed right, or would you like something in between (two-thirds, say)?
-2. Should the ball slow down too, so the whole game runs at half pace?
-3. **Shooting might be too easy now.** An open, well-placed hard shot from 9 m scores about 57% (it was about 35%); straight at the goalie, about 33%. The half-speed goalie can't get across as fast, and I weakened its saves a little to keep AI scoring in range. In real play most shots are contested (the AI shoots 22%). Does open shooting feel too easy?
-4. Do checks and Hex Shove still have enough punch at half the knockback?
+1. Is the controls card enough for a new player, or is anything missing or confusing?
+2. Do the announcer lines fit the tone? Any to cut or add? (There's a slot per situation in `src/content/announcer.ts`.)
+3. Are the generated sounds OK as placeholders, or annoying? Would you rather start muted?
+4. Is the difficulty spread right? Hard is tuned so a Normal AI team still wins about 30%.
+5. The credit line reads "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game." Is that the right wording, or should it say something else (official, links)?
+6. Anything you'd want before posting the link to Discord or Patreon?

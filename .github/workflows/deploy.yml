@@ -47,9 +47,23 @@ jobs:
         with:
           path: dist
 
+  # Balance thresholds from CLAUDE.md are hard failures from M6 on: 1,000 games at a fixed seed.
+  balance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Headless sim, 1,000 games (strict)
+        run: npm run sim -- --games 1000 --seed 1 --strict
+
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: test-and-build
+    needs: [test-and-build, balance]
     runs-on: ubuntu-latest
     permissions:
       pages: write

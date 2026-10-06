@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { createTeamControllers, type Controller } from '../ai';
-import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamInfo } from '../content/teams';
+import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId, type TeamInfo } from '../content/teams';
 import { TEXT } from '../content/text';
 import {
   arenaGeometry,
@@ -14,6 +14,7 @@ import {
   stepMatch,
   stickHead,
   tickSeconds,
+  type Difficulty,
   type InputCommand,
   type MatchState,
   type SimConfig,
@@ -25,12 +26,32 @@ import { BallView } from './BallView';
 import { Hud } from './Hud';
 import { PALETTE } from './palette';
 import { PlayerView } from './PlayerView';
-import { SpellBar } from './SpellBar';
 import { drawRink } from './RinkView';
+import { SpellBar } from './SpellBar';
 import { WorldView } from './view';
 
-/** The human plays for this team. */
+/** The human plays for this team (the left/home side). */
 const HUMAN_TEAM: TeamIndex = 0;
+
+/** What to play. `demo` is AI vs AI with no HUD callouts: the title-screen backdrop. */
+export interface MatchSetup {
+  home: TeamId;
+  away: TeamId;
+  /** The opponents' AI level; your AI teammates always play at Normal. */
+  difficulty: Difficulty;
+  mode: 'play' | 'demo';
+  seed?: number;
+}
+
+/** Events the scene emits on `game.events` for the DOM layer (src/ui). */
+export const SCENE_EVENTS = {
+  /** (events: SimEvent[], state: MatchState, setup: MatchSetup) after every sim tick that had events. */
+  simEvents: 'sim-events',
+  /** (state: MatchState, setup: MatchSetup) once, at the final whistle of a played match. */
+  matchOver: 'match-over',
+  /** () once the scene is built and can take startMatch(). */
+  ready: 'match-scene-ready',
+} as const;
 
 interface Snapshot {
   players: { x: number; y: number }[];
@@ -41,20 +62,26 @@ interface Snapshot {
 export class MatchScene extends Phaser.Scene {
   private config!: SimConfig;
   private state!: MatchState;
+  private setup!: MatchSetup;
   private controllers: Controller[] = [];
   private stepper!: FixedStepper;
   private view!: WorldView;
   private input_!: HumanInput;
   private hud!: Hud;
   private spellBar!: SpellBar;
+  private rink?: Phaser.GameObjects.Image;
   /** Gold shields across the goal mouths while a goalie's Ward is up. */
   private wardFx!: Phaser.GameObjects.Graphics;
-  private controlledId = 0;
+  /** -1 when nobody is human-controlled (demo). */
+  private controlledId = -1;
   private prev!: Snapshot;
   private playerViews: PlayerView[] = [];
   private ballView!: BallView;
   private teams!: [TeamInfo, TeamInfo];
-  private matchSeed = 1;
+  private demoSeed = 1000;
+  private overSent = false;
+  /** While paused the sim doesn't advance (SPEC §5: Esc). */
+  paused = false;
   /** Running tally of sim events, for the debug handle (tests, console). */
   readonly eventCounts: Record<string, number> = {};
 
@@ -64,28 +91,42 @@ export class MatchScene extends Phaser.Scene {
 
   create(): void {
     this.config = makeConfig();
-    const arena = arenaGeometry(this.config);
-    this.view = new WorldView(arena);
+    this.view = new WorldView(arenaGeometry(this.config));
     this.input_ = new HumanInput(this, this.view);
     this.input_.onSwitch = () => this.switchPlayer();
     this.teams = [TEAMS[DEFAULT_HOME], TEAMS[DEFAULT_AWAY]];
-    drawRink(this, arena, this.view, [this.teams[0].color, this.teams[1].color]);
     this.hud = new Hud(this, this.config, this.teams);
     this.spellBar = new SpellBar(this, this.config);
     this.wardFx = this.add.graphics().setDepth(12);
-    this.input.on('pointerdown', () => {
-      if (this.state.phase === 'final') this.startMatch();
-    });
-    this.startMatch();
+    this.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
     exposeDebugHandle(this);
+    this.game.events.emit(SCENE_EVENTS.ready);
   }
 
-  private startMatch(): void {
+  /** Starts a fresh match (or demo) with the given teams and difficulty. */
+  startMatch(setup: MatchSetup): void {
+    this.setup = setup;
+    this.paused = false;
+    this.overSent = false;
     for (const v of this.playerViews) v.destroy();
     this.ballView?.destroy();
-    this.state = createMatch(this.config, this.matchSeed, matchRoster(this.config), { start: 'faceoff' });
-    this.controllers = createTeamControllers(this.state, this.config, this.matchSeed);
-    this.matchSeed++;
+    this.rink?.destroy();
+
+    this.teams = [TEAMS[setup.home], TEAMS[setup.away]];
+    this.rink = drawRink(this, arenaGeometry(this.config), this.view, [
+      this.teams[0].color,
+      this.teams[1].color,
+    ]);
+    this.rink.setDepth(-10);
+    this.hud.setTeams(this.teams);
+    const demo = setup.mode === 'demo';
+    this.hud.setOverlaysEnabled(!demo);
+    this.spellBar.setVisible(!demo);
+
+    const seed = setup.seed ?? (demo ? this.demoSeed++ : Math.floor(Math.random() * 1e9));
+    this.state = createMatch(this.config, seed, matchRoster(this.config), { start: 'faceoff' });
+    const levels: [Difficulty, Difficulty] = demo ? ['normal', 'normal'] : ['normal', setup.difficulty];
+    this.controllers = createTeamControllers(this.state, this.config, seed, levels);
     this.prev = snapshot(this.state);
     this.stepper = new FixedStepper(
       () => this.tick(),
@@ -97,12 +138,21 @@ export class MatchScene extends Phaser.Scene {
     );
     this.ballView = new BallView(this, this.view, this.config);
     this.ballView.setDepth(10);
+    this.controlledId = -1;
     this.onFaceoffSet();
+  }
+
+  private get playing(): boolean {
+    return this.setup.mode === 'play';
   }
 
   /** One fixed sim tick. */
   private tick(): void {
-    if (this.state.phase === 'final') return;
+    if (isOver(this.state)) {
+      this.input_.consumePresses();
+      this.finish();
+      return;
+    }
     this.prev = snapshot(this.state);
     const inputs: InputCommand[] = [];
     for (const p of this.state.players) {
@@ -117,11 +167,29 @@ export class MatchScene extends Phaser.Scene {
     stepMatch(this.state, inputs, this.config);
     this.input_.consumePresses();
     for (const e of this.state.events) this.onEvent(e);
+    if (this.state.events.length > 0) {
+      this.game.events.emit(SCENE_EVENTS.simEvents, this.state.events, this.state, this.setup);
+    }
 
     // Control follows the ball when our team gets it (SPEC §5).
-    const carrier =
-      this.state.ball.carrier !== null ? this.state.players[this.state.ball.carrier] : undefined;
-    if (carrier && carrier.team === HUMAN_TEAM && carrier.role === 'runner') this.controlledId = carrier.id;
+    if (this.playing) {
+      const carrier =
+        this.state.ball.carrier !== null ? this.state.players[this.state.ball.carrier] : undefined;
+      if (carrier && carrier.team === HUMAN_TEAM && carrier.role === 'runner') this.controlledId = carrier.id;
+    }
+
+    // stepMatch may have just ended the match.
+    if (isOver(this.state)) this.finish();
+  }
+
+  /** Final whistle: tell the UI once (it shows results); a demo just starts another match. */
+  private finish(): void {
+    if (!this.playing) {
+      this.startMatch({ ...this.setup, seed: undefined });
+    } else if (!this.overSent) {
+      this.overSent = true;
+      this.game.events.emit(SCENE_EVENTS.matchOver, this.state, this.setup);
+    }
   }
 
   private onEvent(e: SimEvent): void {
@@ -169,13 +237,14 @@ export class MatchScene extends Phaser.Scene {
         this.castPulse(this.state.players[e.goalieId]!.pos, 2.5);
         break;
       case 'boardSlam':
-        this.cameras.main.shake(120, 0.004);
+        if (this.playing) this.cameras.main.shake(120, 0.004);
         break;
     }
   }
 
   /** At every faceoff you take the draw yourself (SPEC §4.1). */
   private onFaceoffSet(): void {
+    if (!this.playing) return;
     const f = this.state.faceoff;
     if (f) {
       this.controlledId = f.takers[HUMAN_TEAM];
@@ -191,7 +260,7 @@ export class MatchScene extends Phaser.Scene {
    */
   private switchPlayer(): void {
     const s = this.state;
-    if (s.phase === 'faceoff') return;
+    if (!this.playing || this.paused || s.phase === 'faceoff') return;
     const carrier = s.ball.carrier !== null ? s.players[s.ball.carrier] : undefined;
     if (carrier && carrier.team === HUMAN_TEAM) return;
     const mates = s.players
@@ -241,11 +310,13 @@ export class MatchScene extends Phaser.Scene {
   }
 
   override update(_time: number, deltaMs: number): void {
-    const alpha = this.stepper.advance(deltaMs / 1000);
+    // Paused: keep drawing, don't advance (and drop any presses made while paused).
+    const alpha = this.paused ? 1 : this.stepper.advance(deltaMs / 1000);
+    if (this.paused) this.input_.consumePresses();
     const s = this.state;
     const lerp = (a: number, b: number) => a + (b - a) * alpha;
 
-    const me = s.players[this.controlledId];
+    const me = this.controlledId >= 0 ? s.players[this.controlledId] : undefined;
     let passTargetId = -1;
     if (me && s.ball.carrier === me.id) {
       passTargetId =
@@ -268,7 +339,7 @@ export class MatchScene extends Phaser.Scene {
     });
     this.ballView.update(lerp(this.prev.ball.x, s.ball.pos.x), lerp(this.prev.ball.y, s.ball.pos.y), s.ball);
     this.hud.update(s);
-    this.spellBar.update(s.players[this.controlledId]);
+    this.spellBar.update(me);
     this.drawWards(s);
   }
 
@@ -304,6 +375,10 @@ export class MatchScene extends Phaser.Scene {
   get controlled(): number {
     return this.controlledId;
   }
+
+  get matchSetup(): Readonly<MatchSetup> {
+    return this.setup;
+  }
 }
 
 function snapshot(state: MatchState): Snapshot {
@@ -325,6 +400,14 @@ function exposeDebugHandle(scene: MatchScene): void {
     get eventCounts() {
       return scene.eventCounts;
     },
+    get setup() {
+      return scene.matchSetup;
+    },
     fastForwardTo: (phase: MatchState['phase']) => scene.fastForwardTo(phase),
   };
+}
+
+/** True once the final whistle has blown. (A function, so TypeScript re-reads the phase.) */
+function isOver(state: MatchState): boolean {
+  return state.phase === 'final';
 }

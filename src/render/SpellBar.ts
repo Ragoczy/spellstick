@@ -19,6 +19,7 @@ const TOP = CANVAS_HEIGHT - SIZE - MANA_H - 16;
 export class SpellBar {
   private readonly g: Phaser.GameObjects.Graphics;
   private lastKey = '';
+  private readonly labels: Phaser.GameObjects.Text[] = [];
 
   constructor(
     scene: Phaser.Scene,
@@ -27,7 +28,7 @@ export class SpellBar {
     this.g = scene.add.graphics().setDepth(150);
     RUNNER_SPELLS.forEach((spell, i) => {
       const x = LEFT + i * (SIZE + GAP);
-      scene.add
+      const key = scene.add
         .text(x + SIZE / 2, TOP + SIZE / 2 - 5, SPELLS[spell].key ?? '', {
           fontFamily: 'Georgia, serif',
           fontSize: '18px',
@@ -35,7 +36,7 @@ export class SpellBar {
         })
         .setOrigin(0.5)
         .setDepth(151);
-      scene.add
+      const name = scene.add
         .text(x + SIZE / 2, TOP + SIZE - 8, SPELLS[spell].name.split(' ')[0]!, {
           fontFamily: 'system-ui, sans-serif',
           fontSize: '9px',
@@ -43,7 +44,13 @@ export class SpellBar {
         })
         .setOrigin(0.5)
         .setDepth(151);
+      this.labels.push(key, name);
     });
+  }
+
+  setVisible(visible: boolean): void {
+    this.g.setVisible(visible);
+    for (const l of this.labels) l.setVisible(visible);
   }
 
   update(p: Player | undefined): void {

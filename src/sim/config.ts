@@ -209,7 +209,7 @@ export const DEFAULT_CONFIG = {
     /** How long a hit player loses control (s). */
     staggerSeconds: 0.6,
     /** Chance a hit on the ball carrier knocks the ball loose. */
-    looseChance: 0.4,
+    looseChance: 0.35,
     /** A knocked-loose ball pops out at this speed (m/s), scattered up to `looseScatterDeg`. */
     looseSpeed: 5,
     looseScatterDeg: 60,
@@ -284,24 +284,24 @@ export const DEFAULT_CONFIG = {
     levels: {
       easy: {
         /** Defensive reaction lag: time to mostly catch up to an attacker's move. */
-        reactionSeconds: 0.3,
+        reactionSeconds: 0.2,
         /** Random error in where the AI aims at the goal (m, either side). */
-        aimErrorM: 0.45,
+        aimErrorM: 0.3,
         /** Shoots from at most this far out. */
         shootRange: 12,
         /** A pass lane counts as open if no opponent is within this distance of it. */
         passLaneClearance: 1.6,
         /** Per-tick chance of throwing a check when one is available (higher vs a shooter winding up). */
-        checkChancePerTick: 0.0012,
+        checkChancePerTick: 0.002,
         /** Goalie reaction time to a shot. */
-        goalieReactionSeconds: 0.22,
+        goalieReactionSeconds: 0.16,
         /** Faceoff press after the whistle: this long, plus up to faceoffWindowSeconds more at random. */
         faceoffReactionSeconds: 0.15,
         faceoffWindowSeconds: 0.35,
         /** Chance of jumping the whistle (a misfire loses the faceoff). */
         faceoffMisfireChance: 0.1,
         /** Scales how readily the AI casts spells when a good moment comes up. */
-        spellEagerness: 0.5,
+        spellEagerness: 0.8,
       },
       normal: {
         reactionSeconds: 0.17,
@@ -316,16 +316,16 @@ export const DEFAULT_CONFIG = {
         spellEagerness: 1,
       },
       hard: {
-        reactionSeconds: 0.1,
-        aimErrorM: 0.12,
+        reactionSeconds: 0.15,
+        aimErrorM: 0.2,
         shootRange: 14,
         passLaneClearance: 2.4,
-        checkChancePerTick: 0.0045,
-        goalieReactionSeconds: 0.08,
+        checkChancePerTick: 0.003,
+        goalieReactionSeconds: 0.11,
         faceoffReactionSeconds: 0.1,
         faceoffWindowSeconds: 0.15,
         faceoffMisfireChance: 0.02,
-        spellEagerness: 1.3,
+        spellEagerness: 1.1,
       },
     },
     runner: {

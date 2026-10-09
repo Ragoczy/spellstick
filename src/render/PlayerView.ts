@@ -1,7 +1,16 @@
 import Phaser from 'phaser';
 import type { Player, SimConfig } from '../sim';
 import { PALETTE } from './palette';
-import { PIX, RETRO, RETRO_PALETTE, snap, SPRITE_ORIGIN, witchTexture } from './retro';
+import {
+  PIX,
+  RETRO,
+  RETRO_PALETTE,
+  snap,
+  SPRITE_FEET,
+  SPRITE_ORIGIN,
+  witchLook,
+  witchTexture,
+} from './retro';
 import type { WorldView } from './view';
 
 /** Retro look: meters walked per walk-cycle frame. */
@@ -75,7 +84,11 @@ export class PlayerView {
     this.marker = scene.add.triangle(0, 0, 0, 0, 14, 0, 7, 9, PALETTE.text).setVisible(false);
 
     if (RETRO) {
-      this.frames = [witchTexture(scene, color, goalie, 0), witchTexture(scene, color, goalie, 1)];
+      const look = witchLook(player.id);
+      this.frames = [
+        witchTexture(scene, color, goalie, look, 0),
+        witchTexture(scene, color, goalie, look, 1),
+      ];
       this.shadow = scene.add.ellipse(0, 0, PIX * 8, PIX * 3, 0x000000, 0.35);
       this.sprite = scene.add
         .image(0, 0, this.frames[0])
@@ -167,7 +180,7 @@ export class PlayerView {
       .setFlipX(Math.cos(s.facing) < 0)
       .setDepth(depth)
       .setAlpha(s.staggered ? 0.6 : 1);
-    this.shadow!.setPosition(snap(sx), snap(sy + PIX * 4)).setDepth(depth - 0.0005);
+    this.shadow!.setPosition(snap(sx), snap(sy) + PIX * (SPRITE_FEET - 1)).setDepth(depth - 0.0005);
     // Stick in front when it points down the screen, behind when it points up.
     const front = Math.sin(s.facing) >= 0 ? 0.0002 : -0.0002;
     this.stick.setDepth(depth + front);

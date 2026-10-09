@@ -65,29 +65,63 @@ export class RetroWorld {
 }
 
 /*
- * Witch sprite, three-quarter top-down, facing right (flipped for left).
- * K outline, H hat, h brim, G hat band, S skin, R robe, r robe shade, W sash, P goalie pads, B boots.
+ * Witch sprite, three-quarter top-down, facing right (flipped for left): a young athlete, not a
+ * crone. Small head under a pointed hat, long hair down her back, fitted jersey, shorts, legs.
+ * K outline, H hat, h brim, G hat band, A hair, S skin, E eye, L lips, R jersey, W jersey stripe,
+ * D shorts, P goalie pads, B boots.
  */
-const WITCH_TOP = [
-  '......KK..',
-  '.....KHK..',
-  '....KHHK..',
-  '...KHHHK..',
-  '...KGGGGK.',
-  '.KKHHHHHKK',
-  'KhhhhhhhhK',
-  '.KSSSSSSK.',
-  '.KSSSSKSK.',
-  '..KSSSSK..',
+const HEAD = [
+  '......KK....',
+  '.....KHHK...',
+  '....KHHHK...',
+  '...KGGGGGK..',
+  '.KKhhhhhhhKK',
+  '..KAAAAAAAK.',
+  '..KAASSSSK..',
+  '.KAASSSESK..',
+  '.KAASSSSSK..',
+  '.KAAKSSLK...',
 ];
-const RUNNER_BODY = ['.KRRWWRRK.', 'KRRRWWRRRK', 'KrRRRRRRrK', '.KrrrrrrK.'];
-const GOALIE_BODY = ['.KPRWWRPK.', 'KPPRWWRPPK', 'KPPRRRRPPK', '.KPrrrrPK.'];
-const LEGS = [['.KBK..KBK.'], ['..KBKKBK..']];
+const RUNNER_BODY = [
+  '.KAAKRWRK...',
+  '..KAKRRRRK..',
+  '..KKRRWRRSK.',
+  '...KRRRRK...',
+  '...KDDDDDK..',
+  '..KDDDDDDK..',
+];
+const GOALIE_BODY = [
+  '.KAAKRWRK...',
+  '.KPKRRRRPK..',
+  '.KPPRRWRPSK.',
+  '..KPRRRRPK..',
+  '..KPDDDDPK..',
+  '..KPPDDPPK..',
+];
+/** Two walk frames: feet together, then mid-stride. */
+const LEGS = [
+  ['...KSKKSK...', '...KSKKSK...', '...KBKKBK...'],
+  ['...KSK.KSK..', '..KSK...KSK.', '..KBK...KBK.'],
+];
 
-export const SPRITE_W = 10;
-export const SPRITE_H = WITCH_TOP.length + RUNNER_BODY.length + 1;
-/** Art pixel that sits on the sim position (roughly the body's middle). */
-export const SPRITE_ORIGIN = { x: 5, y: 10 };
+export const SPRITE_W = HEAD[0]!.length;
+export const SPRITE_H = HEAD.length + RUNNER_BODY.length + LEGS[0]!.length;
+/** Art pixel that sits on the sim position (the waist). */
+export const SPRITE_ORIGIN = { x: 6, y: 12 };
+/** Art pixels from the origin down to the soles, for the shadow. */
+export const SPRITE_FEET = SPRITE_H - SPRITE_ORIGIN.y;
+
+/** Per-player looks so a team isn't a row of clones. Purely cosmetic, picked by player id. */
+const HAIR = ['#f0d070', '#5a3018', '#1c1410', '#b0401c', '#d89850', '#3a2a20'];
+const SKIN = ['#f6c8a0', '#e8b088', '#c08458', '#8c5434'];
+export interface WitchLook {
+  hair: string;
+  skin: string;
+}
+export const witchLook = (playerId: number): WitchLook => ({
+  hair: HAIR[playerId % HAIR.length]!,
+  skin: SKIN[(playerId * 3 + 1) % SKIN.length]!,
+});
 
 const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 const shade = (c: number, f: number): number => {
@@ -97,22 +131,33 @@ const shade = (c: number, f: number): number => {
   return (r << 16) | (g << 8) | b;
 };
 
-/** Generates (once) and returns the texture key for a witch in this team color, role and walk frame. */
-export function witchTexture(scene: Phaser.Scene, color: number, goalie: boolean, frame: 0 | 1): string {
-  const key = `witch-${color}-${goalie ? 'g' : 'r'}-${frame}`;
+/** Generates (once) and returns the texture key for a witch with this team color, role, look and walk frame. */
+export function witchTexture(
+  scene: Phaser.Scene,
+  color: number,
+  goalie: boolean,
+  look: WitchLook,
+  frame: 0 | 1,
+): string {
+  const key = `witch-${color}-${goalie ? 'g' : 'r'}-${look.hair}-${look.skin}-${frame}`;
   if (scene.textures.exists(key)) return key;
-  const data = [...WITCH_TOP, ...(goalie ? GOALIE_BODY : RUNNER_BODY), ...LEGS[frame]!];
+  // Goalies wear pads down their legs.
+  const legs = LEGS[frame]!.map((row) => (goalie ? row.replaceAll('S', 'P') : row));
+  const data = [...HEAD, ...(goalie ? GOALIE_BODY : RUNNER_BODY), ...legs];
   const palette: Record<string, string> = {
     K: '#101018',
     H: hex(shade(color, 0.75)),
     h: hex(shade(color, 0.5)),
     G: goalie ? '#fcfcfc' : '#ffa630',
-    S: '#f0bc8c',
+    A: look.hair,
+    S: look.skin,
+    E: '#101018',
+    L: '#c04860',
     R: hex(color),
-    r: hex(shade(color, 0.7)),
     W: '#fcfcfc',
+    D: hex(shade(color, 0.45)),
     P: '#d8d8d8',
-    B: '#503000',
+    B: '#3c2410',
   };
   // Phaser types the palette as hex digits only; any single-character key works at runtime.
   scene.textures.generate(key, {

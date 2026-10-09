@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Ball, SimConfig } from '../sim';
 import { PALETTE } from './palette';
+import { PIX, RETRO } from './retro';
 import type { WorldView } from './view';
 
 /** Drawn larger than the sim ball so it reads at this zoom. */
@@ -20,11 +21,12 @@ export class BallView {
     private readonly view: WorldView,
     private readonly config: SimConfig,
   ) {
-    const r = view.len(VISUAL_RADIUS_M);
+    // Retro: at least a 2-art-pixel ball so it survives the low resolution.
+    const r = RETRO ? Math.max(view.len(VISUAL_RADIUS_M), PIX * 1.2) : view.len(VISUAL_RADIUS_M);
     this.halo = scene.add.circle(0, 0, r * 3, PALETTE.mana, 0.25).setVisible(false);
     this.ring = scene.add.circle(0, 0, r * 1.8, PALETTE.mana, 0.75).setVisible(false);
     this.trail = scene.add.graphics();
-    this.dot = scene.add.circle(0, 0, r, PALETTE.ball).setStrokeStyle(1, 0x000000, 0.4);
+    this.dot = scene.add.circle(0, 0, r, PALETTE.ball).setStrokeStyle(RETRO ? 0 : 1, 0x000000, 0.4);
   }
 
   /** Gold glow while in flight (SPEC §8); hard shots glow bigger and brighter. */

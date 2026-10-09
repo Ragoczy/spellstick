@@ -26,6 +26,7 @@ import { BallView } from './BallView';
 import { Hud } from './Hud';
 import { PALETTE } from './palette';
 import { PlayerView } from './PlayerView';
+import { RETRO, RetroWorld } from './retro';
 import { drawRink } from './RinkView';
 import { SpellBar } from './SpellBar';
 import { WorldView } from './view';
@@ -70,6 +71,8 @@ export class MatchScene extends Phaser.Scene {
   private hud!: Hud;
   private spellBar!: SpellBar;
   private rink?: Phaser.GameObjects.Image;
+  /** Experimental 8-bit look (`?look=8bit`). */
+  private retro?: RetroWorld;
   /** Gold shields across the goal mouths while a goalie's Ward is up. */
   private wardFx!: Phaser.GameObjects.Graphics;
   /** -1 when nobody is human-controlled (demo). */
@@ -97,6 +100,11 @@ export class MatchScene extends Phaser.Scene {
     this.teams = [TEAMS[DEFAULT_HOME], TEAMS[DEFAULT_AWAY]];
     this.hud = new Hud(this, this.config, this.teams);
     this.spellBar = new SpellBar(this, this.config);
+    if (RETRO) {
+      // Everything created from here on is world, drawn at low resolution; the HUD stays crisp.
+      this.retro = new RetroWorld(this);
+      this.retro.capture();
+    }
     this.wardFx = this.add.graphics().setDepth(12);
     this.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
     exposeDebugHandle(this);
@@ -341,6 +349,7 @@ export class MatchScene extends Phaser.Scene {
     this.hud.update(s);
     this.spellBar.update(me);
     this.drawWards(s);
+    this.retro?.render();
   }
 
   /**

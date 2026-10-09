@@ -1,7 +1,11 @@
 import Phaser from 'phaser';
 import type { Player, SimConfig } from '../sim';
 import { PALETTE } from './palette';
+import { PIX, RETRO, RETRO_PALETTE, snap, SPRITE_ORIGIN, witchTexture } from './retro';
 import type { WorldView } from './view';
+
+/** Retro look: meters walked per walk-cycle frame. */
+const STRIDE_M = 0.35;
 
 export interface PlayerDrawState {
   /** Interpolated world position. */
@@ -37,6 +41,13 @@ export class PlayerView {
   private readonly marker: Phaser.GameObjects.Triangle;
   private readonly fx: Phaser.GameObjects.Graphics;
   private fxDrawn = false;
+  /** Retro look only: the witch sprite, its shadow, and walk-cycle state. */
+  private readonly sprite?: Phaser.GameObjects.Image;
+  private readonly shadow?: Phaser.GameObjects.Ellipse;
+  private readonly frames: [string, string] = ['', ''];
+  private walked = 0;
+  private lastX = NaN;
+  private lastY = NaN;
 
   constructor(
     scene: Phaser.Scene,
@@ -62,6 +73,22 @@ export class PlayerView {
       .setOrigin(0.5);
     // Marker over the controlled player: a small downward chevron.
     this.marker = scene.add.triangle(0, 0, 0, 0, 14, 0, 7, 9, PALETTE.text).setVisible(false);
+
+    if (RETRO) {
+      this.frames = [witchTexture(scene, color, goalie, 0), witchTexture(scene, color, goalie, 1)];
+      this.shadow = scene.add.ellipse(0, 0, PIX * 8, PIX * 3, 0x000000, 0.35);
+      this.sprite = scene.add
+        .image(0, 0, this.frames[0])
+        .setScale(PIX)
+        .setDisplayOrigin(SPRITE_ORIGIN.x, SPRITE_ORIGIN.y);
+      this.body.setVisible(false);
+      this.label.setVisible(false);
+      this.stick.setLineWidth(PIX).setStrokeStyle(PIX, RETRO_PALETTE.stick);
+      this.head
+        .setRadius(PIX * 1.5)
+        .setFillStyle(RETRO_PALETTE.stick)
+        .setStrokeStyle();
+    }
   }
 
   update(s: PlayerDrawState): void {
@@ -115,15 +142,43 @@ export class PlayerView {
       }
     }
 
+    if (this.sprite && this.shadow) this.updateSprite(s, sx, sy);
     this.body.setPosition(sx, sy).setAlpha(s.staggered ? 0.65 : 1);
     this.label.setPosition(sx, sy);
     this.marker.setVisible(s.controlled);
     if (s.controlled) {
       this.marker.setPosition(sx, sy - r - 12).setFillStyle(s.checkReady ? PALETTE.text : 0x6b6f7a);
+      // Retro: sit the marker above the hat.
+      if (this.sprite) this.marker.setY(snap(sy) - PIX * (SPRITE_ORIGIN.y + 4));
     }
+  }
+
+  /** Retro look: place the pixel witch on the art grid, face her, step the walk cycle, sort by y. */
+  private updateSprite(s: PlayerDrawState, sx: number, sy: number): void {
+    const sprite = this.sprite!;
+    if (!Number.isNaN(this.lastX)) this.walked += Math.hypot(s.x - this.lastX, s.y - this.lastY);
+    this.lastX = s.x;
+    this.lastY = s.y;
+    const frame = Math.floor(this.walked / STRIDE_M) % 2;
+    const depth = 1 + sy / 1000;
+    sprite
+      .setTexture(this.frames[frame]!)
+      .setPosition(snap(sx), snap(sy))
+      .setFlipX(Math.cos(s.facing) < 0)
+      .setDepth(depth)
+      .setAlpha(s.staggered ? 0.6 : 1);
+    this.shadow!.setPosition(snap(sx), snap(sy + PIX * 4)).setDepth(depth - 0.0005);
+    // Stick in front when it points down the screen, behind when it points up.
+    const front = Math.sin(s.facing) >= 0 ? 0.0002 : -0.0002;
+    this.stick.setDepth(depth + front);
+    this.head.setDepth(depth + front);
+    this.fx.setDepth(depth + 0.0003);
+    this.marker.setDepth(depth + 0.0004);
   }
 
   destroy(): void {
     for (const o of [this.stick, this.head, this.body, this.label, this.marker, this.fx]) o.destroy();
+    this.sprite?.destroy();
+    this.shadow?.destroy();
   }
 }

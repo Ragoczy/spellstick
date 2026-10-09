@@ -170,5 +170,6 @@ describe('team AI (5v5)', () => {
       if (state.score[1] > state.score[0]) easyWins++;
     }
     expect(hardWins).toBeGreaterThan(easyWins * 2);
-  });
+    // 20 full matches: about 6 s on a slow CI runner, past Vitest's 5 s default.
+  }, 30_000);
 });

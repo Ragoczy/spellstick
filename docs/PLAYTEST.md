@@ -1,46 +1,34 @@
-# Playtest notes — M6 (Screens, polish, balance)
+# Playtest notes — M7 (Announcer voice)
 
 **Build:** https://ragoczy.github.io/spellstick/ (the git SHA is in the bottom-right corner)
 
-This is the full v1 loop. Try it the way a reader from Discord or Patreon would: open the link cold and see if you can get into a match without help.
-
 ## What changed
 
-- **Title screen**, with an AI-vs-AI match playing behind it, a credit line for the Warlock series, Play, and Controls.
-- **Team select:** pick your team (Wyverns, Ichthyocentaurs, or Willowmere Witches), the opponent, and Easy, Normal, or Hard. It remembers your last choice. You always play the left side; difficulty sets the opponents, and your AI teammates are always Normal.
-- **Controls card:** one screen with every control and four tips. It shows before your first match, and from the title and pause menus.
-- **Pause (Esc):** Resume, Controls, or Quit to title.
-- **Results:** final score (and "OT" if it went there), who won, and shots, saves, hits, and spells cast for each team. Then Rematch or Main menu.
-- **Announcer:** text callouts at the bottom of the screen for goals, saves, Ward blocks, big hits, pile-ups, strips, shot-clock and crease calls. It uses all three canon exclamations ("Child's Tantrum!", "Crone's Corns!", "Third-witch in!"); everything else is plain sports filler and lives in `src/content/announcer.ts`.
-- **Sound:** a hit thump, a pass whoosh, a shot crack, a goal horn, a whistle, and a spell shimmer. They're generated in the browser, so there are no audio files. Toggle with M or the button in the top-right corner.
-- **Balance:**
-  - Difficulties are distinct but beatable. Measured as a Normal AI team against each: it beats Easy 78%, Normal about 50%, Hard 30%.
-  - Less chaotic, per your M3 note: about 76 checks a game (was 115), a check strips the ball 35% of the time (was 40%), and about 46 possession changes a game (was 72).
-  - The CLAUDE.md thresholds are now a hard CI gate over 1,000 games: 6.6 goals per game, no spell above 36% of casts, home win 52.6%, 0 stuck players.
+- **The announcer can talk.** Following your choice (recorded clips only), every announcer line now has an id, and the game speaks any line that has a recording. With no recordings yet, the game looks and sounds exactly as it did in M6. That's on purpose.
+- **Adding recordings needs no code.** Name a file after its line (`goal-01.mp3`, `save-03.mp3`, …), drop it in `src/content/announcer-voice/`, commit, and push. The next deploy speaks that line. You can add them a few at a time.
+- **The recording script is ready:** [docs/ANNOUNCER_SCRIPT.md](ANNOUNCER_SCRIPT.md). 28 lines grouped by situation (goal, overtime winner, save, Ward block, big hit, pile-up, turnover, shot clock, crease), each with when it fires, a delivery note, and file specs (mono MP3, 96–128 kbps, trimmed, similar loudness). Hand it to a voice actor, or paste it into a text-to-speech service with the delivery notes as direction.
+- **How it plays:**
+  - The voice always says the same line the text shows.
+  - A bigger moment cuts off a smaller one: a goal call interrupts a save call, never the other way round.
+  - Sound effects dip while the announcer talks.
+  - M mutes everything.
+- **Checked end to end** with a throwaway test tone named `goal-01.wav` (since removed). The build picked it up, and a goal in a real match played it alongside "Crone's Corns! It's in!".
 
-## How to run
+## How to try it
 
-- Play: open the build link above.
-- Local: `npm install`, then `npm run dev`.
+1. Record or generate one or two lines from the script, for example `goal-01.mp3` ("Crone's Corns! It's in!") and `save-01.mp3` ("Stopped cold!").
+2. Put them in `src/content/announcer-voice/`, then `npm run dev` locally, or commit and push to deploy.
+3. Play a match and score a goal. With sound on, you should hear it.
 
-## Things to try
-
-1. Open the link cold. Without reading anything but the controls card, can you get into a match and play a full one?
-2. Play a match on each difficulty. Does Easy feel winnable for someone new, and Hard actually hard?
-3. Score a goal and land a big hit into the boards; listen to the sound and watch for the announcer.
-4. Pause mid-match with Esc, open Controls from there, then resume.
-5. Finish a match and read the results screen. Then try Rematch, and Main menu.
-6. Toggle sound with M, reload, and check that it stayed muted.
+If a file name doesn't match a line id, `npm test` (and CI) will say so, to catch typos.
 
 ## Questions for you
 
-1. Is the controls card enough for a new player, or is anything missing or confusing?
-2. Do the announcer lines fit the tone? Any to cut or add? (There's a slot per situation in `src/content/announcer.ts`.)
-3. Are the generated sounds OK as placeholders, or annoying? Would you rather start muted?
-4. Is the difficulty spread right? Hard is tuned so a Normal AI team still wins about 30%.
-5. The credit line reads "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game." Is that the right wording, or should it say something else (official, links)?
-6. Anything you'd want before posting the link to Discord or Patreon?
+1. Who or what will voice it: you, a voice actor, or a TTS service? If TTS, I can suggest how to batch it.
+2. Should I add more lines per situation (more variety) before you record, so you only book one session?
+3. Any situations you'd want called that aren't covered (faceoff wins, end of period, spells)?
+4. Should the voice have its own on/off, separate from sound effects?
 
-## Bonus: the 8-bit look (optional)
+## Still open from M6
 
-Add `?look=8bit` to the address: https://ragoczy.github.io/spellstick/?look=8bit. The rink, players and effects draw as chunky pixel art, and the players become pixel witches with their own hair and skin. The scoreboard and menus stay in the normal font. Without the flag the game looks exactly as before. If you decide to keep it, the next steps are a pixel font for the HUD and menus and drawing the stick into the sprite.
+The M6 questions (credit line, spell names, open-shot difficulty, starting muted) you said are fine for now. The optional 8-bit look is still available at https://ragoczy.github.io/spellstick/?look=8bit.

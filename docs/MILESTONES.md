@@ -52,5 +52,13 @@ Each milestone ends at a gate (see CLAUDE.md): tests pass, the sim is clean, PLA
 - [x] From Paul's M3 playtest (2026-10-06): "a little too chaotic"; tune it down in the balance pass. Levers to try, checked against the sim: fewer AI checks (`checkChancePerTick`), a lower strip chance (`check.looseChance`), longer check cooldown, fewer possession changes per game (M3 sim: ~72), and longer settled possessions before shots. Done: AI checks 115 → 76 a game, strip chance 40% → 35%, possession changes 72 → 46 a game.
 - **Done when:** a new player can open the link, pick teams, and play a full match without instructions beyond a one-screen controls card.
 
+## M7 — Announcer voice (from the backlog; Paul, 2026-10-09)
+Paul's call: recorded clips only (no browser text-to-speech). The game stays text-only until recordings are added.
+- [x] Give every announcer line a stable id that names its recording; lines keep their id when the wording changes.
+- [x] Load whatever clips are in `src/content/announcer-voice/` at build time (`<id>.mp3`, `.ogg`, or `.wav`); lines without one stay text-only.
+- [x] Speak the same line the text shows; a more important call cuts off a less important one; effects duck under the voice; the M mute covers it.
+- [x] Generate a recording script (`docs/ANNOUNCER_SCRIPT.md`) from the line list, with situations, delivery notes, and file specs; a test keeps it in sync and catches mis-named clip files.
+- **Done when:** dropping a correctly named clip into the folder makes that line speak in the deployed game with no code changes, and the game behaves exactly as before with no clips.
+
 ## Backlog (post-v1, not started without Paul's go-ahead)
-Real art, touch controls, local 2-player, more spells and teams, an announcer voice, a season or tournament mode.
+Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

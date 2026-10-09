@@ -27,7 +27,12 @@ npm run sim -- --games 1000 --seed 1 --strict   # headless AI-vs-AI stats; fails
 npm run sim -- --games 300 --home-level normal --away-level hard   # compare difficulty levels
 npm run build        # production build to dist/
 npm run test:e2e     # Playwright: plays through the menus and a match against the built game
+npm run announcer:script   # regenerate docs/ANNOUNCER_SCRIPT.md after editing announcer lines
 ```
+
+## Announcer voice
+
+The announcer speaks any line that has a recording. Drop `<line id>.mp3` files into `src/content/announcer-voice/` (the ids, lines, and delivery notes are in [docs/ANNOUNCER_SCRIPT.md](docs/ANNOUNCER_SCRIPT.md)), commit, and push. Lines without a recording are shown as text only.
 
 ## Layout
 

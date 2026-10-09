@@ -1,4 +1,4 @@
-import { ANNOUNCER, type CalloutKind } from '../content/announcer';
+import { ANNOUNCER, type AnnouncerLine, type CalloutKind } from '../content/announcer';
 import type { MatchState, SimConfig, SimEvent } from '../sim';
 
 /** Most important first: a goal call can interrupt anything. */
@@ -14,6 +14,9 @@ const PRIORITY: Record<CalloutKind, number> = {
   turnover: 1,
 };
 
+/** How much a callout matters: higher ones interrupt lower ones (text and voice). */
+export const calloutPriority = (kind: CalloutKind): number => PRIORITY[kind];
+
 const SHOW_MS = 1600;
 /** Minimum gap between callouts unless a more important one comes along. */
 const GAP_MS = 1100;
@@ -21,8 +24,9 @@ const GAP_MS = 1100;
 const PILEUP_RADIUS = 3;
 
 /**
- * Text-only announcer (SPEC §8): picks a line for notable sim events and shows it in the
- * lower third. Lines rotate so the same one doesn't repeat back to back.
+ * The announcer (SPEC §8): picks a line for notable sim events and shows it in the lower
+ * third. Lines rotate so the same one doesn't repeat back to back. `call` returns the
+ * line it showed, so the voice (src/ui/voice.ts) can speak the same one.
  */
 export class Announcer {
   private readonly el: HTMLElement;
@@ -86,14 +90,16 @@ export class Announcer {
     return best;
   }
 
-  call(kind: CalloutKind): void {
+  /** Shows a line for `kind` unless something as important is still up. Returns the line, or null. */
+  call(kind: CalloutKind): AnnouncerLine | null {
     const now = performance.now();
     const busy = now - this.shownAt < GAP_MS;
-    if (busy && PRIORITY[kind] <= this.shownPriority) return;
+    if (busy && PRIORITY[kind] <= this.shownPriority) return null;
     const lines = ANNOUNCER[kind];
     const i = this.next.get(kind) ?? 0;
     this.next.set(kind, (i + 1) % lines.length);
-    this.el.textContent = lines[i]!;
+    const line = lines[i]!;
+    this.el.textContent = line.text;
     this.el.classList.remove('show');
     void this.el.offsetWidth; // restart the pop animation
     this.el.classList.add('show');
@@ -104,6 +110,7 @@ export class Announcer {
       this.el.classList.remove('show');
       this.shownPriority = 0;
     }, SHOW_MS);
+    return line;
   }
 
   clear(): void {

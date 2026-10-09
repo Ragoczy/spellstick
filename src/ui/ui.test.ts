@@ -9,7 +9,10 @@ const state = () => createMatch(config, 1, matchRoster(config));
 
 describe('announcer (SPEC §8)', () => {
   it('uses every canon exclamation somewhere in its lines', () => {
-    const all = Object.values(ANNOUNCER).flat().join(' ');
+    const all = Object.values(ANNOUNCER)
+      .flat()
+      .map((l) => l.text)
+      .join(' ');
     for (const phrase of CANON_EXCLAMATIONS) expect(all).toContain(phrase.replace(/!$/, ''));
   });
 
@@ -48,7 +51,7 @@ describe('announcer (SPEC §8)', () => {
       config,
     );
     expect(kind).toBe('pileup');
-    expect(ANNOUNCER.pileup.some((l) => l.startsWith('Third-witch in'))).toBe(true);
+    expect(ANNOUNCER.pileup.some((l) => l.text.startsWith('Third-witch in'))).toBe(true);
   });
 });
 

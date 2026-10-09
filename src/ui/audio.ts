@@ -2,14 +2,25 @@
  * Simple sound effects, synthesized with Web Audio (no asset files): hit, pass, shot,
  * goal horn, whistle, and a spell shimmer. Optional and mutable (SPEC §8); the mute
  * setting is remembered per browser when storage is available.
+ *
+ * Also plays recorded announcer clips on their own voice bus; effects duck under the
+ * voice so the call is easy to hear. One mute covers everything.
  */
 export type SoundName = 'hit' | 'pass' | 'shot' | 'goal' | 'whistle' | 'spell' | 'click';
 
 const MUTE_KEY = 'spellstick.muted';
+const MASTER_GAIN = 0.5;
+/** Effects drop to this level while the announcer is talking... */
+const DUCK_GAIN = 0.45;
+/** ...and fade back over this long (s). */
+const DUCK_RELEASE = 0.25;
 
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  /** Effects bus (ducked under the voice) and voice bus, both into master. */
+  private sfxBus: GainNode | null = null;
+  private voiceBus: GainNode | null = null;
   private muted: boolean;
   private lastPlayed = new Map<SoundName, number>();
 
@@ -28,7 +39,7 @@ export class Sfx {
     } catch {
       // Storage blocked (private mode etc.): just don't remember it.
     }
-    if (this.master) this.master.gain.value = muted ? 0 : 0.5;
+    if (this.master) this.master.gain.value = muted ? 0 : MASTER_GAIN;
   }
 
   /** Browsers only allow audio after a user gesture; call this from one. */
@@ -43,8 +54,48 @@ export class Sfx {
     if (!Ctor) return;
     this.ctx = new Ctor();
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.5;
+    this.master.gain.value = this.muted ? 0 : MASTER_GAIN;
     this.master.connect(this.ctx.destination);
+    this.sfxBus = this.ctx.createGain();
+    this.sfxBus.connect(this.master);
+    this.voiceBus = this.ctx.createGain();
+    this.voiceBus.connect(this.master);
+  }
+
+  /** The audio context, once unlocked. */
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
+  /**
+   * Plays a decoded announcer clip on the voice bus, ducking the effects until it ends.
+   * Returns a function that stops it early, or null if audio isn't available.
+   */
+  playVoice(buffer: AudioBuffer, onEnded: () => void): (() => void) | null {
+    const ctx = this.ctx;
+    if (!ctx || !this.voiceBus || !this.sfxBus) return null;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.voiceBus);
+    const duck = this.sfxBus.gain;
+    const now = ctx.currentTime;
+    duck.cancelScheduledValues(now);
+    duck.setTargetAtTime(DUCK_GAIN, now, 0.03);
+    let stopped = false;
+    src.onended = () => {
+      duck.cancelScheduledValues(ctx.currentTime);
+      duck.setTargetAtTime(1, ctx.currentTime, DUCK_RELEASE / 3);
+      if (!stopped) onEnded();
+    };
+    src.start(now);
+    return () => {
+      stopped = true;
+      try {
+        src.stop();
+      } catch {
+        // Already finished.
+      }
+    };
   }
 
   play(name: SoundName): void {
@@ -108,7 +159,7 @@ export class Sfx {
     }
     gain.gain.setValueAtTime(vol, at);
     gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
-    osc.connect(gain).connect(this.master!);
+    osc.connect(gain).connect(this.sfxBus!);
     osc.start(at);
     osc.stop(at + dur + 0.02);
   }
@@ -126,7 +177,7 @@ export class Sfx {
     filter.frequency.value = cutoff;
     const gain = ctx.createGain();
     gain.gain.value = vol;
-    src.connect(filter).connect(gain).connect(this.master!);
+    src.connect(filter).connect(gain).connect(this.sfxBus!);
     src.start(at);
   }
 }

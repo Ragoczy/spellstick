@@ -2,9 +2,11 @@ import type Phaser from 'phaser';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId } from '../content/teams';
 import { MatchScene, SCENE_EVENTS, type MatchSetup } from '../render/MatchScene';
 import { makeConfig, type Difficulty, type MatchState, type SimEvent } from '../sim';
-import { Announcer } from './announcer';
+import { VOICE_CLIPS } from '../content/announcerVoice';
+import { Announcer, calloutPriority } from './announcer';
 import { Sfx, type SoundName } from './audio';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
+import { AnnouncerVoice } from './voice';
 import {
   controlsScreen,
   pauseScreen,
@@ -25,6 +27,7 @@ export class App {
   private readonly root: HTMLElement;
   private readonly sfx = new Sfx();
   private readonly announcer: Announcer;
+  private readonly voice = new AnnouncerVoice(this.sfx, VOICE_CLIPS);
   private readonly muteButton: HTMLButtonElement;
   private readonly config = makeConfig();
   private scene!: MatchScene;
@@ -51,6 +54,15 @@ export class App {
     // Any click is a user gesture: wake the audio context.
     window.addEventListener('pointerdown', () => this.sfx.unlock(), { capture: true });
     game.events.once(SCENE_EVENTS.ready, () => this.onSceneReady());
+    // Read-only handle for tests and the console: which announcer lines have recordings.
+    (window as unknown as { __spellstickUi: unknown }).__spellstickUi = {
+      voice: {
+        recorded: this.voice.recordedIds,
+        spoken: this.voice.spoken,
+        speak: (id: string) => this.voice.speak(id, 99),
+        preload: () => this.voice.preload(),
+      },
+    };
   }
 
   private onSceneReady(): void {
@@ -84,6 +96,7 @@ export class App {
   showTitle(): void {
     this.inMatch = false;
     this.announcer.clear();
+    this.voice.stop();
     if (this.scene.matchSetup.mode !== 'demo') {
       this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
     }
@@ -131,12 +144,15 @@ export class App {
     this.tally = emptyTally();
     this.inMatch = true;
     this.announcer.clear();
+    this.voice.stop();
+    void this.voice.preload(); // starting a match is a user gesture: audio is unlocked
     this.scene.startMatch({ ...this.selection, mode: 'play' });
   }
 
   private pause(): void {
     if (!this.inMatch || this.scene.paused) return;
     this.scene.paused = true;
+    this.voice.stop();
     this.showPause();
   }
 
@@ -191,7 +207,10 @@ export class App {
       if (sound) this.sfx.play(sound);
     }
     const kind = Announcer.classify(events, state, this.config);
-    if (kind) this.announcer.call(kind);
+    if (kind) {
+      const line = this.announcer.call(kind);
+      if (line) this.voice.speak(line.id, calloutPriority(kind));
+    }
   }
 
   private onMatchOver(state: MatchState, setup: MatchSetup): void {

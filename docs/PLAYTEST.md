@@ -40,3 +40,7 @@ This is the full v1 loop. Try it the way a reader from Discord or Patreon would:
 4. Is the difficulty spread right? Hard is tuned so a Normal AI team still wins about 30%.
 5. The credit line reads "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game." Is that the right wording, or should it say something else (official, links)?
 6. Anything you'd want before posting the link to Discord or Patreon?
+
+## Bonus: the 8-bit look (optional)
+
+Add `?look=8bit` to the address: https://ragoczy.github.io/spellstick/?look=8bit. The rink, players and effects draw as chunky pixel art, and the players become pixel witches with their own hair and skin. The scoreboard and menus stay in the normal font. Without the flag the game looks exactly as before. If you decide to keep it, the next steps are a pixel font for the HUD and menus and drawing the stick into the sprite.

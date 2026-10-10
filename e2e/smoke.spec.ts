@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mockLoggedIn } from './auth';
 
 interface DebugPlayer {
   team: number;
@@ -87,6 +88,7 @@ test('a new player: title, team select, controls, a match, pause, results, back 
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
+  await mockLoggedIn(page);
   await page.goto('./');
   await page.evaluate(() => localStorage.clear());
   await page.reload();

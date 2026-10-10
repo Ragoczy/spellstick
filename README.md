@@ -2,7 +2,7 @@
 
 A fast, top-down, arcade box-lacrosse game for the browser, set in Daniel Kensington's _Warlock_ series (Darkspace Press). Witches, sticks, legal violence, and golden-orange magic.
 
-**Play:** https://ragoczy.github.io/spellstick/
+**Play:** https://spellstick.games.darkspace.press (log in with Discord)
 
 Pick your team, an opponent, and a difficulty, then play a full match: four 2:30 periods, faceoffs, a 30-second shot clock, the crease rule, sudden-death overtime, body checks, and three spells.
 
@@ -33,7 +33,16 @@ npm run build        # production build to dist/
 npm run test:e2e     # Playwright: plays through the menus and a match against the built game
 npm run announcer:script   # regenerate docs/ANNOUNCER_SCRIPT.md after editing announcer lines
 npm run announcer:voice    # generate missing announcer clips with ElevenLabs (key in .env.local)
+npm run dev:swa      # built game + Discord login API at http://localhost:4280 (needs .env, see below)
 ```
+
+`npm run dev` skips the login (there's no auth API behind the Vite dev server). To try the real login locally, copy `.env.example` to `.env` (git-ignored), fill in the Discord app's client id and secret and a `SESSION_SECRET` (`openssl rand -base64 48`), add `http://localhost:4280/api/auth/callback` as a redirect in the Discord Developer Portal, and run `npm run dev:swa`. The first run downloads the Static Web Apps CLI, Azure Functions Core Tools, and (on Node newer than 22) a Node 22 for the Functions worker.
+
+## Hosting and login
+
+Azure Static Web Apps (Free), `swa-spellstick` in `rg-game-spellstick` (eastus2), defined in `infra/main.bicep`. GitHub Actions tests every push and deploys `main` (the built `dist/` plus the functions in `api/`) with the `AZURE_STATIC_WEB_APPS_API_TOKEN` repo secret. `public/staticwebapp.config.json` sets the SPA fallback and caching (hashed `/assets/*` immutable, everything else no-cache).
+
+Login is Discord OAuth2 (scope `identify`), shared by all Darkspace games: `/api/auth/login`, `/api/auth/callback`, `/api/auth/me`, `/api/auth/logout`. The session is a 30-day HS256 JWT in the `dsg_session` cookie (HttpOnly, Secure, SameSite=Lax; `Domain=.games.darkspace.press` on that domain, host-only elsewhere). Secrets are app settings only: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `SESSION_SECRET`.
 
 ## Announcer voice
 
@@ -46,5 +55,7 @@ The announcer speaks any line that has a recording. Drop `<line id>.mp3` files i
 - `src/render/` — Phaser rendering of the match (rink, players, HUD); reads sim state only.
 - `src/ui/` — DOM menus (title, team select, controls card, pause, results), announcer, sound, and input.
 - `src/content/` — names, colors, and text that may change: teams, spells (placeholders), announcer lines, HUD text.
-- `tools/` — the headless sim runner and its report.
+- `tools/` — the headless sim runner and its report, and the local SWA runner.
+- `api/` — the Discord login functions (Azure Functions, Node, TypeScript).
+- `infra/` — Bicep for the Static Web App.
 - `docs/` — spec, milestones, decisions, and playtest notes.

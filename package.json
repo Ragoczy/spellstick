@@ -6,6 +6,7 @@
   "description": "Spellstick: a magical box-lacrosse browser game set in the Warlock series.",
   "scripts": {
     "dev": "vite",
+    "dev:swa": "npm run build && npm run build --prefix api && tsx tools/swaDev.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",

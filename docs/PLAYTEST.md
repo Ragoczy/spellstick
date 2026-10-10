@@ -1,6 +1,6 @@
 # Playtest notes — title-screen changelog
 
-**Build:** https://ragoczy.github.io/spellstick/ (the git SHA is in the bottom-right corner)
+**Build:** https://spellstick.games.darkspace.press (the git SHA is in the bottom-right corner)
 
 ## What changed
 

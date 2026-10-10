@@ -78,6 +78,44 @@
   margin-top: 22px;
 }
 
+/* Discord login on the title screen. */
+.account {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 34px;
+  margin: -14px 0 14px;
+}
+.account .avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-edge);
+}
+.account-name {
+  color: var(--ink);
+  font-weight: 700;
+}
+.login-note {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 14px;
+  text-align: center;
+}
+.login-note[role='alert'] {
+  color: var(--gold);
+}
+.btn.primary.discord {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+}
+.btn.primary.discord:hover,
+.btn.primary.discord:focus-visible {
+  background: #6d79f5;
+}
+
 /* "What's new" on the title screen. */
 .whats-new {
   margin-top: 26px;

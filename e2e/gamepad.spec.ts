@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mockLoggedIn } from './auth';
 
 /**
  * M8: the whole flow on a gamepad, with no mouse or keyboard. The browser's Gamepad API is
@@ -131,6 +132,7 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
       ],
     });
   });
+  await mockLoggedIn(page);
   await page.goto('./');
   await page.evaluate(() => localStorage.clear());
   await page.reload();

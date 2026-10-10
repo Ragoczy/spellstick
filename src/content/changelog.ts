@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-10-10',
+    title: 'A new home, and Discord login',
+    items: [
+      'Spellstick now lives at spellstick.games.darkspace.press.',
+      'Log in with your Discord account to play. The game only sees your Discord name and avatar.',
+    ],
+  },
+  {
+    date: '2026-10-10',
     title: 'Controllers and 8-bit witches',
     items: [
       'Play with a controller: Xbox, PlayStation, Switch Pro, and most PC pads. The menus work on it too.',

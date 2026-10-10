@@ -1,4 +1,6 @@
 dist
+api/dist
+.swa
 node_modules
 test-results
 playwright-report

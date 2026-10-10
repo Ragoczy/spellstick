@@ -5,6 +5,7 @@ import { makeConfig, type Difficulty, type MatchState, type SimEvent } from '../
 import { clipId } from '../content/announcer';
 import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
+import { LOGIN_URL, checkSession, logOut, takeLoginMessage, type AuthState } from './auth';
 import { Sfx, type SoundName } from './audio';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
 import { PadMenus } from './padMenus';
@@ -42,6 +43,8 @@ export class App {
   private tally: [TeamTally, TeamTally] = emptyTally();
   private inMatch = false;
   private seenControls = false;
+  private auth: AuthState = { status: 'checking' };
+  private onTitle = false;
 
   constructor(private readonly game: Phaser.Game) {
     this.root = document.createElement('div');
@@ -75,6 +78,7 @@ export class App {
     // Any click is a user gesture: wake the audio context.
     window.addEventListener('pointerdown', () => this.sfx.unlock(), { capture: true });
     game.events.once(SCENE_EVENTS.ready, () => this.onSceneReady());
+    void this.refreshAuth(takeLoginMessage());
     // Read-only handle for tests and the console: which announcer lines have recordings.
     (window as unknown as { __spellstickUi: unknown }).__spellstickUi = {
       voice: {
@@ -100,6 +104,7 @@ export class App {
 
   /** Shows a menu screen (or none). `back` is what B on a gamepad does there. */
   private show(node: HTMLElement | null, back: (() => void) | null = null): void {
+    this.onTitle = node?.id === 'title';
     this.current?.remove();
     this.current = node;
     this.backAction = back;
@@ -126,19 +131,37 @@ export class App {
       this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
     }
     this.show(
-      titleScreen({
-        play: this.click(() => this.showTeamSelect()),
-        controls: this.click(() =>
-          this.show(
-            controlsScreen(
+      titleScreen(
+        {
+          play: this.click(() => this.showTeamSelect()),
+          login: this.click(() => window.location.assign(LOGIN_URL)),
+          logout: this.click(() => void this.logout()),
+          controls: this.click(() =>
+            this.show(
+              controlsScreen(
+                this.click(() => this.showTitle()),
+                'Back',
+              ),
               this.click(() => this.showTitle()),
-              'Back',
             ),
-            this.click(() => this.showTitle()),
           ),
-        ),
-      }),
+        },
+        this.auth,
+      ),
     );
+  }
+
+  /** Asks the auth API who's logged in, then redraws the title if it's showing. */
+  private async refreshAuth(message?: string): Promise<void> {
+    this.auth = await checkSession(import.meta.env.DEV);
+    if (message && this.auth.status === 'out') this.auth = { status: 'out', message };
+    if (this.onTitle) this.showTitle();
+  }
+
+  private async logout(): Promise<void> {
+    await logOut();
+    this.auth = { status: 'out' };
+    if (this.onTitle) this.showTitle();
   }
 
   private showTeamSelect(): void {

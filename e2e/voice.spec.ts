@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { mockLoggedIn } from './auth';
 
 interface VoiceHandle {
   recorded: string[];
@@ -12,6 +13,7 @@ interface VoiceHandle {
 test('announcer voice: recorded lines play; with none, nothing breaks', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  await mockLoggedIn(page);
   await page.goto('./');
   await page.getByRole('button', { name: 'Play' }).click(); // a user gesture: audio unlocks
   const result = await page.evaluate(async () => {

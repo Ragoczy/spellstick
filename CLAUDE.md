@@ -43,7 +43,7 @@ Read these before doing anything:
 
 ## Deployment
 
-GitHub Actions builds on every push to `main` and deploys to GitHub Pages. Set the Vite `base` to match. The build must run tests first and fail the deploy if they fail.
+GitHub Actions builds on every push to `main` and deploys to Azure Static Web Apps (`swa-spellstick`, https://spellstick.games.darkspace.press; was GitHub Pages until 2026-10-10). The Vite `base` is `/`. The build must run tests first and fail the deploy if they fail. The only server code is the Discord login API in `api/`; game logic stays client-side. Secrets live only in the Static Web App's app settings, never in the repo.
 
 ## Canon and tone
 

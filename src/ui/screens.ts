@@ -2,6 +2,7 @@ import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/change
 import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
 import type { Difficulty } from '../sim';
+import type { AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import type { TeamTally } from './matchStats';
 
@@ -36,14 +37,24 @@ function screen(id: string, ...content: (Node | string)[]): HTMLElement {
 export interface TitleActions {
   play(): void;
   controls(): void;
+  login(): void;
+  logout(): void;
 }
 
-export function titleScreen(a: TitleActions): HTMLElement {
+/** Play only once logged in with Discord; until then the main button is the login. */
+export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
+  const main =
+    auth.status === 'in' || auth.status === 'dev'
+      ? button('Play', a.play, 'btn primary')
+      : auth.status === 'checking'
+        ? el('button', { class: 'btn', type: 'button', disabled: '' }, 'Checking login…')
+        : button('Log in with Discord', a.login, 'btn primary discord');
   return screen(
     'title',
     el('h1', { class: 'title-logo' }, 'SPELLSTICK'),
     el('p', { class: 'tagline' }, 'Full-contact magical box lacrosse. Witches, sticks, and spells.'),
-    el('div', { class: 'stack' }, button('Play', a.play, 'btn primary'), button('Controls', a.controls)),
+    accountLine(auth, a.logout),
+    el('div', { class: 'stack' }, main, button('Controls', a.controls)),
     whatsNew(CHANGELOG.slice(0, TITLE_CHANGELOG_ENTRIES)),
     el(
       'p',
@@ -51,6 +62,42 @@ export function titleScreen(a: TitleActions): HTMLElement {
       "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game.",
     ),
   );
+}
+
+/** Who's logged in (avatar, name, log out), or why to log in. */
+function accountLine(auth: AuthState, logout: () => void): HTMLElement {
+  if (auth.status === 'in') {
+    const avatar = el('img', {
+      class: 'avatar',
+      src: auth.user.avatarUrl,
+      alt: '',
+      width: '28',
+      height: '28',
+    });
+    avatar.referrerPolicy = 'no-referrer';
+    return el(
+      'div',
+      { class: 'account', 'aria-label': 'Logged in' },
+      avatar,
+      el('span', { class: 'account-name' }, auth.user.username),
+      button('Log out', logout, 'btn small'),
+    );
+  }
+  if (auth.status === 'out') {
+    return el(
+      'div',
+      { class: 'account' },
+      el(
+        'p',
+        { class: 'login-note', role: auth.message ? 'alert' : 'note' },
+        auth.message ?? 'Log in with your Discord account to play.',
+      ),
+    );
+  }
+  if (auth.status === 'dev') {
+    return el('div', { class: 'account' }, el('p', { class: 'login-note' }, 'Dev server: login skipped.'));
+  }
+  return el('div', { class: 'account' });
 }
 
 /** How many of the latest changelog entries the title screen shows. */

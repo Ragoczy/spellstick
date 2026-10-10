@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mockLoggedIn } from './auth';
 
 // Screenshots of each screen for manual review.
 type Handle = { fastForwardTo: (phase: string) => void; state: { phase: string } };
@@ -11,6 +12,7 @@ const ff = (page: Page, phase: string) =>
 
 test('title, team select, faceoff, spells, period break', async ({ page }) => {
   test.setTimeout(60_000);
+  await mockLoggedIn(page);
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'SPELLSTICK' })).toBeVisible();
   await page.waitForTimeout(600);

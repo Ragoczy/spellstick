@@ -12,9 +12,9 @@ function buildId(): string {
   }
 }
 
-// GitHub Pages serves the project at https://<user>.github.io/spellstick/
+// Azure Static Web Apps serves the game at the site root (https://spellstick.games.darkspace.press/).
 export default defineConfig({
-  base: '/spellstick/',
+  base: '/',
   define: {
     __BUILD_ID__: JSON.stringify(buildId()),
   },

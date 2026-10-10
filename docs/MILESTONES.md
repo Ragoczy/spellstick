@@ -68,7 +68,7 @@ Paul's call: recorded clips only (no browser text-to-speech). The game stays tex
   - [x] Drop the laugh tag from big hits and regenerate `hit-01` and `hit-05`.
   - [x] Home announcer: an angry take (`<id>-against`) for every line, played when the moment favors the opponent, falling back to the regular take.
   - [x] Generate all 28 angry takes and measure them.
-  - [ ] Paul listens to the new takes and flags any to redo.
+  - [x] Paul listens to the new takes and flags any to redo (2026-10-10: "things look good").
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

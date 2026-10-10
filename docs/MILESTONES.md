@@ -87,6 +87,7 @@ Paul's ask: "add a changelog to startup that shows the most recent updates."
 - [x] A "What's new" section on the title screen with the latest 3 updates (title, date, a few plain lines each), newest first.
 - [x] The entries live in `src/content/changelog.ts`; tests keep them dated, non-empty, and in order.
 - [x] It fits the title panel on desktop and phone widths, and the panel scrolls on short windows.
+- Paul signed off (2026-10-10): "three is good." The latest three entries stay; no separate full-history screen.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

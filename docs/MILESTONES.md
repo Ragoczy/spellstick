@@ -80,6 +80,7 @@ Paul's call: "merge the art, can we add controller support?"
 - [x] Keyboard and mouse still work exactly as before, and you can switch between them mid-match.
 - [x] Tests: unit tests for stick deadzones, aim, button mapping, and press edges; a Playwright test that plays the menus and a match with a simulated gamepad.
 - **Done when:** with only a gamepad, Paul can go from the title screen through a match to the results and back, and the 8-bit look is what loads by default.
+- Paul signed off (2026-10-10): "keep it as is for now." Layout, aim assist, aim-where-you-run, and the 8-bit default stay as built.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

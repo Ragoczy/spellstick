@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { allAnnouncerLines, ANNOUNCER, CALLOUT_DIRECTION } from '../src/content/announcer';
+import { AGAINST_SUFFIX, allAnnouncerLines, ANNOUNCER, CALLOUT_DIRECTION } from '../src/content/announcer';
 import { renderScript, SCRIPT_PATH } from './announcerScript';
 
 const VOICE_DIR = fileURLToPath(new URL('../src/content/announcer-voice/', import.meta.url));
@@ -14,14 +14,20 @@ describe('announcer recording script', () => {
   it('every line has a unique, file-name-safe id', () => {
     const ids = allAnnouncerLines().map((l) => l.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(id).toMatch(/^[a-z0-9-]+$/);
+    for (const id of ids) {
+      expect(id).toMatch(/^[a-z0-9-]+$/);
+      expect(id.endsWith(AGAINST_SUFFIX), `${id}: the ${AGAINST_SUFFIX} suffix is for angry takes`).toBe(
+        false,
+      );
+    }
   });
 
-  it('every situation has direction and at least one line', () => {
+  it('every situation has direction for both takes and at least one line', () => {
     for (const kind of Object.keys(ANNOUNCER) as (keyof typeof ANNOUNCER)[]) {
       expect(ANNOUNCER[kind].length).toBeGreaterThan(0);
       expect(CALLOUT_DIRECTION[kind].when).not.toBe('');
       expect(CALLOUT_DIRECTION[kind].delivery).not.toBe('');
+      expect(CALLOUT_DIRECTION[kind].against).not.toBe('');
     }
   });
 
@@ -31,7 +37,8 @@ describe('announcer recording script', () => {
     for (const f of files) {
       const m = /^([a-z0-9-]+)\.(mp3|ogg|wav)$/.exec(f);
       expect(m, `unexpected file in announcer-voice/: ${f}`).not.toBeNull();
-      expect(ids.has(m![1]!), `${f} doesn't match any announcer line id`).toBe(true);
+      const base = m![1]!.endsWith(AGAINST_SUFFIX) ? m![1]!.slice(0, -AGAINST_SUFFIX.length) : m![1]!;
+      expect(ids.has(base), `${f} doesn't match any announcer line id`).toBe(true);
     }
   });
 });

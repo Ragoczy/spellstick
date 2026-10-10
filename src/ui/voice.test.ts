@@ -65,6 +65,17 @@ describe('announcer voice', () => {
     expect(voice.speak('save-01', 2)).toBe(true);
   });
 
+  it('plays the first take that has a recording: the angry one, else the regular one', async () => {
+    const out = fakeOutput();
+    const voice = new AnnouncerVoice(out, { ...clips, 'save-01-against': 'save-01-against.mp3' }, loader);
+    await voice.preload();
+    expect(voice.speak(['save-01-against', 'save-01'], 2)).toBe(true);
+    expect(voice.spoken.at(-1)).toBe('save-01-against');
+    out.playing.at(-1)!.ended();
+    expect(voice.speak(['goal-01-against', 'goal-01'], 4)).toBe(true); // no angry take recorded
+    expect(voice.spoken.at(-1)).toBe('goal-01');
+  });
+
   it('is silent when muted', async () => {
     const voice = new AnnouncerVoice(fakeOutput(true), clips, loader);
     await voice.preload();

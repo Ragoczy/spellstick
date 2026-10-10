@@ -1,5 +1,11 @@
-import { ANNOUNCER, type AnnouncerLine, type CalloutKind } from '../content/announcer';
-import type { MatchState, SimConfig, SimEvent } from '../sim';
+import { ANNOUNCER, type AnnouncerLine, type CalloutKind, type CalloutSide } from '../content/announcer';
+import type { MatchState, SimConfig, SimEvent, TeamIndex } from '../sim';
+
+/** A callout to make, and whether the moment favors the player's team. */
+export interface Callout {
+  kind: CalloutKind;
+  side: CalloutSide;
+}
 
 /** Most important first: a goal call can interrupt anything. */
 const PRIORITY: Record<CalloutKind, number> = {
@@ -43,47 +49,58 @@ export class Announcer {
     root.append(this.el);
   }
 
-  /** Which callout (if any) a tick's events deserve. */
-  static classify(events: readonly SimEvent[], state: MatchState, config: SimConfig): CalloutKind | null {
-    let best: CalloutKind | null = null;
-    const consider = (k: CalloutKind) => {
-      if (!best || PRIORITY[k] > PRIORITY[best]) best = k;
+  /**
+   * Which callout (if any) a tick's events deserve, and whose side it's on: `for` when the
+   * moment favors `humanTeam` (the player's side), `against` when it favors the opponent.
+   */
+  static classify(
+    events: readonly SimEvent[],
+    state: MatchState,
+    config: SimConfig,
+    humanTeam: TeamIndex = 0,
+  ): Callout | null {
+    let best: Callout | null = null;
+    const consider = (kind: CalloutKind, favoredTeam: TeamIndex) => {
+      if (!best || PRIORITY[kind] > PRIORITY[best.kind]) {
+        best = { kind, side: favoredTeam === humanTeam ? 'for' : 'against' };
+      }
     };
+    const other = (t: TeamIndex): TeamIndex => (t === 0 ? 1 : 0);
     for (const e of events) {
       switch (e.type) {
         case 'goal':
-          consider(state.period > config.match.periods ? 'overtimeWinner' : 'goal');
+          consider(state.period > config.match.periods ? 'overtimeWinner' : 'goal', e.team);
           break;
         case 'save':
-          consider('save');
+          consider('save', e.team); // the goalie's team
           break;
         case 'wardBlock':
-          consider('wardBlock');
+          consider('wardBlock', e.team);
           break;
         case 'goalDisallowed':
         case 'creaseViolation':
-          consider('crease');
+          consider('crease', other(e.team)); // e.team broke the rule
           break;
         case 'shotClockViolation':
-          consider('shotClock');
+          consider('shotClock', other(e.team));
           break;
         case 'boardSlam':
-          consider('bigHit');
+          consider('bigHit', other(state.players[e.playerId]!.team)); // e.playerId got slammed
           break;
         case 'check': {
           const t = state.players[e.targetId]!;
           const crowd = state.players.filter(
             (p) => p.role === 'runner' && Math.hypot(p.pos.x - t.pos.x, p.pos.y - t.pos.y) < PILEUP_RADIUS,
           ).length;
-          if (crowd >= 4) consider('pileup');
-          else if (e.loosened) consider('bigHit');
+          if (crowd >= 4) consider('pileup', e.team);
+          else if (e.loosened) consider('bigHit', e.team);
           break;
         }
         case 'hexShove':
-          if (e.loosened) consider('turnover');
+          if (e.loosened) consider('turnover', state.players[e.playerId]!.team);
           break;
         case 'catch':
-          if (e.intercepted) consider('turnover');
+          if (e.intercepted) consider('turnover', e.team);
           break;
       }
     }

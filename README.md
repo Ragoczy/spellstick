@@ -33,7 +33,7 @@ npm run announcer:voice    # generate missing announcer clips with ElevenLabs (k
 
 ## Announcer voice
 
-The announcer speaks any line that has a recording. Drop `<line id>.mp3` files into `src/content/announcer-voice/` (the ids, lines, and delivery notes are in [docs/ANNOUNCER_SCRIPT.md](docs/ANNOUNCER_SCRIPT.md)), commit, and push. Lines without a recording are shown as text only.
+The announcer speaks any line that has a recording. Drop `<line id>.mp3` files into `src/content/announcer-voice/` (the ids, lines, and delivery notes are in [docs/ANNOUNCER_SCRIPT.md](docs/ANNOUNCER_SCRIPT.md)), commit, and push. Each line can also have an angry take, `<line id>-against.mp3`, which plays when the moment favors the opponent (it is a home announcer for your team). Lines without a recording are shown as text only.
 
 ## Layout
 

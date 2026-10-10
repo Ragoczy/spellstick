@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId } from '../content/teams';
 import { MatchScene, SCENE_EVENTS, type MatchSetup } from '../render/MatchScene';
 import { makeConfig, type Difficulty, type MatchState, type SimEvent } from '../sim';
+import { clipId } from '../content/announcer';
 import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
 import { Sfx, type SoundName } from './audio';
@@ -207,10 +208,12 @@ export class App {
       const sound = SOUND_FOR[e.type];
       if (sound) this.sfx.play(sound);
     }
-    const kind = Announcer.classify(events, state, this.config);
-    if (kind) {
-      const line = this.announcer.call(kind);
-      if (line) this.voice.speak(line.id, calloutPriority(kind));
+    // The player is always the home side (team 0).
+    const callout = Announcer.classify(events, state, this.config, 0);
+    if (callout) {
+      const line = this.announcer.call(callout.kind);
+      // The angry take when the moment favors the opponent; the regular take if there's no angry one.
+      if (line) this.voice.speak([clipId(line.id, callout.side), line.id], calloutPriority(callout.kind));
     }
   }
 

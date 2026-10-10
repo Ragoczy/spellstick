@@ -130,14 +130,19 @@ export class AnnouncerVoice {
     return this.loading;
   }
 
-  /** Speaks line `id` at `priority`. Returns true if it started playing. */
-  speak(id: string, priority: number): boolean {
+  /**
+   * Speaks the first of `ids` that has a recording (e.g. the angry take, then the regular
+   * one) at `priority`. Returns true if it started playing.
+   */
+  speak(ids: string | readonly string[], priority: number): boolean {
     if (this.out.isMuted) return false;
-    const clip = this.clipsLoaded.get(id);
-    if (!clip) {
-      if (this.clips[id]) void this.preload(); // not loaded yet: get ready for next time
+    const list = typeof ids === 'string' ? [ids] : ids;
+    const id = list.find((i) => this.clipsLoaded.has(i));
+    if (id === undefined) {
+      if (list.some((i) => this.clips[i])) void this.preload(); // not loaded yet: get ready for next time
       return false;
     }
+    const clip = this.clipsLoaded.get(id)!;
     if (this.current && this.current.priority >= priority) return false;
     this.current?.stop();
     const entry = { priority, stop: () => {} };

@@ -4,8 +4,8 @@
  * marked [CANON] come from the Warlock books (SPEC §2); everything else is plain
  * sports-announcer filler, not lore. Edit freely.
  *
- * Each line has a stable `id`: its recording is `src/content/announcer-voice/<id>.mp3`
- * (or .ogg / .wav). Change a line's text and its id stays put, so re-record it. Add a
+ * Each line has a stable `id`: its recordings are `src/content/announcer-voice/<id>.mp3`
+ * and `<id>-against.mp3` (or .ogg / .wav), see CalloutSide below. Change a line's text and its id stays put, so re-record it. Add a
  * line with a new id. After editing, run `npm run announcer:script` to refresh
  * docs/ANNOUNCER_SCRIPT.md (a test fails if you forget).
  */
@@ -79,37 +79,66 @@ export const ANNOUNCER: Record<CalloutKind, readonly AnnouncerLine[]> = {
   ],
 };
 
-/** When each kind of callout fires, and how it should sound: for the recording script. */
-export const CALLOUT_DIRECTION: Record<CalloutKind, { when: string; delivery: string }> = {
-  goal: { when: 'A goal is scored.', delivery: 'Big and loud; the top of your range. Celebrate.' },
-  overtimeWinner: {
-    when: 'The sudden-death overtime winner. The match is over.',
-    delivery: 'The biggest call in the game. Full release, a little longer if it wants to be.',
+/**
+ * The announcer is a home announcer for the player's team. Every line has two takes:
+ * `for` (the moment favors the player's team) and `against` (it favors the opponent:
+ * they score, their goalie robs you, they flatten one of yours, you blow the shot clock).
+ * Same words, different read. The `against` take is `<id>-against.mp3`.
+ */
+export type CalloutSide = 'for' | 'against';
+
+export const AGAINST_SUFFIX = '-against';
+
+/** The recording id for a line on a given side. */
+export const clipId = (lineId: string, side: CalloutSide): string =>
+  side === 'against' ? `${lineId}${AGAINST_SUFFIX}` : lineId;
+
+/** When each kind of callout fires, and how each take should sound: for the recording script. */
+export const CALLOUT_DIRECTION: Record<CalloutKind, { when: string; delivery: string; against: string }> = {
+  goal: {
+    when: 'A goal is scored. Against: the opponent scored.',
+    delivery: 'Big and loud; the top of your range. Celebrate.',
+    against: 'Furious and disgusted, like the home team just got burned.',
   },
-  save: { when: 'The goalie stops a shot.', delivery: 'Sharp and punchy, impressed.' },
+  overtimeWinner: {
+    when: 'The sudden-death overtime winner; the match is over. Against: the opponent won it.',
+    delivery: 'The biggest call in the game. Full release, a little longer if it wants to be.',
+    against: 'Outraged disbelief: the home side just lost it all.',
+  },
+  save: {
+    when: "The goalie stops a shot. Against: the opponent's goalie robbed the player's team.",
+    delivery: 'Sharp and punchy, impressed.',
+    against: 'Angry and bitter, like a robbery.',
+  },
   wardBlock: {
-    when: "The goalie's magic shield blocks a shot that would have gone in.",
+    when: "The goalie's magic shield blocks a shot that would have gone in. Against: the opponent's goalie did it.",
     delivery: 'Awed; a touch of wonder in it.',
+    against: 'Angry: the shield cheated the home side.',
   },
   bigHit: {
-    when: 'A player is slammed into the boards, or a check knocks the ball loose.',
-    delivery: 'Wincing glee: the crowd loves the violence.',
+    when: "A player is slammed into the boards, or a check knocks the ball loose. Against: it's one of the player's team getting flattened.",
+    delivery: 'Excited: the crowd loves the violence. No laughing.',
+    against: 'Angry, protective of your own.',
   },
   pileup: {
-    when: 'A hit in a crowd of players.',
-    delivery: 'Gleeful, like a fight just broke out. "Third-witch in" is a set phrase: say it as one.',
+    when: 'A hit in a crowd of players. Against: the opponent threw it.',
+    delivery: 'Excited, like a fight just broke out. "Third-witch in" is a set phrase: say it as one.',
+    against: 'Angry, like the other side started it.',
   },
   turnover: {
-    when: 'A player loses the ball (stripped or intercepted).',
-    delivery: 'Quick, a little scornful.',
+    when: "A player loses the ball (stripped or intercepted). Against: the player's team lost it.",
+    delivery: 'Quick, a little scornful of the other side.',
+    against: 'Angry and exasperated at the home side.',
   },
   shotClock: {
-    when: 'A team runs out the 30-second shot clock.',
+    when: "A team runs out the 30-second shot clock. Against: the player's team ran it out.",
     delivery: 'Mock-exasperated, like a ref call.',
+    against: 'Angry and frustrated with the home side.',
   },
   crease: {
-    when: "An attacker carries the ball into the goalie's crease, or a goal is waved off for it.",
+    when: "An attacker carries the ball into the goalie's crease, or a goal is waved off for it. Against: the player's team did it.",
     delivery: 'Firm, like a ref call.',
+    against: 'Angry, like it cost the home side.',
   },
 };
 

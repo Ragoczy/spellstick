@@ -3,16 +3,17 @@
  *
  *   npm run announcer:voice                       # every line that doesn't have a clip yet
  *   npm run announcer:voice -- --only goal-01,save-02 --force   # redo specific lines
+ *   npm run announcer:voice -- --only hit-01 --takes regular --force   # just the regular take
  *   npm run announcer:voice -- --info             # just show which voice is configured
  *
  * Reads ELEVENLABS_API_KEY from the environment or from `.env.local` in the project root
  * (git-ignored). The key is never printed. Clips go to src/content/announcer-voice/<id>.mp3,
  * which the game picks up at build time.
  */
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { allAnnouncerLines, type CalloutKind } from '../src/content/announcer';
+import { allAnnouncerLines, clipId, type CalloutKind, type CalloutSide } from '../src/content/announcer';
 
 /** Paul's chosen ElevenLabs voice (2026-10-10). */
 export const VOICE_ID = 'hA4zGnmTwX2NQiTRMt7o';
@@ -23,18 +24,33 @@ const DEFAULT_MODEL = 'eleven_v3';
 /**
  * Delivery tags for eleven_v3, which reads bracketed audio tags as direction rather than
  * speaking them. Other models would read them out loud, so they're only sent to v3.
- * They mirror CALLOUT_DIRECTION in src/content/announcer.ts.
+ * They mirror CALLOUT_DIRECTION in src/content/announcer.ts: the regular take (the moment
+ * favors the player's team) and the angry take (it favors the opponent). Emotion tags
+ * only: sound tags like [laughing] add noises (Paul cut the laugh on big hits).
  */
-const V3_TAGS: Record<CalloutKind, string> = {
-  goal: '[excited] [shouting]',
-  overtimeWinner: '[ecstatic] [shouting]',
-  save: '[excited]',
-  wardBlock: '[awed]',
-  bigHit: '[excited] [laughing]',
-  pileup: '[excited]',
-  turnover: '[mischievously]',
-  shotClock: '[exasperated]',
-  crease: '[firmly]',
+const V3_TAGS: Record<CalloutSide, Record<CalloutKind, string>> = {
+  for: {
+    goal: '[excited] [shouting]',
+    overtimeWinner: '[ecstatic] [shouting]',
+    save: '[excited]',
+    wardBlock: '[awed]',
+    bigHit: '[excited]',
+    pileup: '[excited]',
+    turnover: '[mischievously]',
+    shotClock: '[exasperated]',
+    crease: '[firmly]',
+  },
+  against: {
+    goal: '[angry] [shouting]',
+    overtimeWinner: '[furious] [shouting]',
+    save: '[angry]',
+    wardBlock: '[angry]',
+    bigHit: '[angry] [shouting]',
+    pileup: '[angry]',
+    turnover: '[angry]',
+    shotClock: '[frustrated] [angry]',
+    crease: '[angry]',
+  },
 };
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -98,6 +114,8 @@ async function main(): Promise<void> {
       force: { type: 'boolean', default: false },
       model: { type: 'string', default: DEFAULT_MODEL },
       info: { type: 'boolean', default: false },
+      /** Which takes to make: regular (favors the player's team), angry (favors the opponent), or both. */
+      takes: { type: 'string', default: 'both' },
     },
   });
   const key = apiKey();
@@ -116,42 +134,42 @@ async function main(): Promise<void> {
     if (unknown.length) throw new Error(`Unknown line ids: ${unknown.join(', ')}`);
   }
   mkdirSync(OUT_DIR, { recursive: true });
+  const sides: CalloutSide[] =
+    values.takes === 'regular' ? ['for'] : values.takes === 'angry' ? ['against'] : ['for', 'against'];
 
   let made = 0;
   let skipped = 0;
+  let bytes = 0;
   const failed: string[] = [];
   for (const line of lines) {
-    const file = `${OUT_DIR}${line.id}.mp3`;
-    if (existsSync(file) && !values.force) {
-      skipped++;
-      continue;
-    }
-    const text = values.model === 'eleven_v3' ? `${V3_TAGS[line.kind]} ${line.text}` : line.text;
-    try {
-      const audio = await synthesize(key, text, values.model);
-      writeFileSync(file, audio);
-      made++;
-      console.log(`  ${line.id.padEnd(14)} ${seconds(audio.length).toFixed(1)} s  ${line.text}`);
-    } catch (err) {
-      failed.push(line.id);
-      console.error(`  ${line.id.padEnd(14)} FAILED: ${(err as Error).message}`);
-      if (made === 0 && failed.length === 1 && /401|402|403|quota|model/i.test((err as Error).message)) {
-        throw new Error('Stopping: the first request failed for a reason every request would hit.', {
-          cause: err,
-        });
+    for (const side of sides) {
+      const id = clipId(line.id, side);
+      const file = `${OUT_DIR}${id}.mp3`;
+      if (existsSync(file) && !values.force) {
+        skipped++;
+        continue;
+      }
+      const text = values.model === 'eleven_v3' ? V3_TAGS[side][line.kind] + ' ' + line.text : line.text;
+      try {
+        const audio = await synthesize(key, text, values.model);
+        writeFileSync(file, audio);
+        made++;
+        bytes += audio.length;
+        console.log(`  ${id.padEnd(22)} ${seconds(audio.length).toFixed(1)} s  ${line.text}`);
+      } catch (err) {
+        failed.push(id);
+        console.error(`  ${id.padEnd(22)} FAILED: ${(err as Error).message}`);
+        if (made === 0 && failed.length === 1 && /401|402|403|quota|model/i.test((err as Error).message)) {
+          throw new Error('Stopping: the first request failed for a reason every request would hit.', {
+            cause: err,
+          });
+        }
       }
     }
   }
   console.log(
-    `\n${made} generated, ${skipped} already had a clip (use --force to redo), ${failed.length} failed.`,
+    `\n${made} generated (${(bytes / 1024).toFixed(0)} KB), ${skipped} already had a clip (use --force to redo), ${failed.length} failed.`,
   );
-  if (made > 0) {
-    const total = lines.reduce(
-      (n, l) => n + (existsSync(`${OUT_DIR}${l.id}.mp3`) ? statSync(`${OUT_DIR}${l.id}.mp3`).size : 0),
-      0,
-    );
-    console.log(`Clips folder: ${(total / 1024).toFixed(0)} KB for these lines.`);
-  }
   if (failed.length) process.exitCode = 1;
 }
 

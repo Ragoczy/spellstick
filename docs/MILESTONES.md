@@ -63,7 +63,12 @@ Paul's call: recorded clips only (no browser text-to-speech). The game stays tex
   - [x] Generator script (`npm run announcer:voice`) with the key in a git-ignored `.env.local`.
   - [x] Generate all 28 lines; measure them; regenerate any bad take.
   - [x] Trim silence and level loudness at load time so uneven takes play cleanly.
-  - [ ] Paul listens and flags any lines to redo.
+  - [x] Paul listens and flags any lines to redo.
+- From Paul (2026-10-10): redo `hit-01` and `hit-05` without the laugh; reactions to the opponent should be angrier.
+  - [x] Drop the laugh tag from big hits and regenerate `hit-01` and `hit-05`.
+  - [x] Home announcer: an angry take (`<id>-against`) for every line, played when the moment favors the opponent, falling back to the regular take.
+  - [x] Generate all 28 angry takes and measure them.
+  - [ ] Paul listens to the new takes and flags any to redo.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

@@ -43,7 +43,7 @@ Read these before doing anything:
 
 ## Deployment
 
-GitHub Actions builds on every push to `main` and deploys to Azure Static Web Apps (`swa-spellstick`, https://spellstick.games.darkspace.press; was GitHub Pages until 2026-10-10). The Vite `base` is `/`. The build must run tests first and fail the deploy if they fail. The only server code is the Discord login API in `api/`; game logic stays client-side. Secrets live only in the Static Web App's app settings, never in the repo.
+GitHub Actions builds on every push to `main` and deploys a container to Azure Container Apps (`ca-game-spellstick`, https://spellstick.games.darkspace.press; was GitHub Pages until 2026-10-10), on the same shared architecture as the Spellstick card game. See `infra/README.md`. The Vite `base` is `/`. The build must run tests first and fail the deploy if they fail. The only server code is `server/` (serves the game, Discord login); game logic stays client-side. Shared settings come from Key Vault; secrets never go in the repo.
 
 ## Canon and tone
 

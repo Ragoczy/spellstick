@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-server
+test-results
+playwright-report
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example

@@ -1,12 +1,11 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { ACCESS_ROLES, accessSettings, checkAccess, type AccessRole } from './access';
-import { signJwt, verifyJwt } from './jwt';
+import { ACCESS_ROLES, accessSettings, checkAccess, type AccessRole } from './access.js';
+import { signJwt, verifyJwt } from './jwt.js';
 
 /**
  * Discord login (OAuth2 authorization code flow, scopes "identify guilds.members.read"),
  * with the shared Darkspace Games access rule (Darkspace Discord server roles; see access.ts).
- * Kept free of the Functions runtime so it can be unit tested; the registrations live in
- * src/functions/auth.ts.
+ * Kept free of HTTP plumbing so it can be unit tested; server/http.ts routes requests here.
  */
 
 export const SESSION_COOKIE = 'dsg_session';
@@ -22,13 +21,14 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const DISCORD_TIMEOUT_MS = 10_000;
 const DISCORD_SCOPES = 'identify guilds.members.read';
 
-/** The parts of an HTTP request the handlers read (a subset of @azure/functions' HttpRequest). */
+/** The parts of an HTTP request the handlers read. */
 export interface AuthRequest {
+  /** The full URL as the browser used it (public origin, path, query). */
   url: string;
   headers: { get(name: string): string | null };
 }
 
-/** Matches @azure/functions' Cookie. */
+/** A Set-Cookie, serialized by server/http.ts. */
 export interface ResponseCookie {
   name: string;
   value: string;
@@ -41,7 +41,7 @@ export interface ResponseCookie {
   sameSite?: 'Strict' | 'Lax' | 'None';
 }
 
-/** Matches @azure/functions' HttpResponseInit. */
+/** What a handler answers; server/http.ts writes it out. */
 export interface AuthResponse {
   status: number;
   headers?: Record<string, string>;
@@ -67,21 +67,8 @@ export interface MeBody {
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
-/** The origin the browser used. SWA forwards it in x-ms-original-url; the function itself sees an internal URL. */
+/** The origin the browser used, so one build works on the Azure address, the custom domain, and localhost. */
 export function requestOrigin(req: AuthRequest): string {
-  const original = req.headers.get('x-ms-original-url');
-  if (original) {
-    try {
-      return new URL(original).origin;
-    } catch {
-      // fall through
-    }
-  }
-  const host = req.headers.get('x-forwarded-host');
-  if (host) {
-    const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-    return `${proto.split(',')[0]!.trim()}://${host.split(',')[0]!.trim()}`;
-  }
   return new URL(req.url).origin;
 }
 

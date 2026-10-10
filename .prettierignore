@@ -1,6 +1,5 @@
 dist
-api/dist
-.swa
+dist-server
 node_modules
 test-results
 playwright-report

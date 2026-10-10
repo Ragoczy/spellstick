@@ -23,13 +23,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm ci --prefix api
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm test
-      - name: Build the auth API (typecheck)
-        run: npm run build --prefix api
+      - name: Build the server
+        run: npm run build:server
       - name: Headless sim (smoke)
         run: npm run sim -- --games 50 --seed 1
       - run: npm run build
@@ -44,14 +43,6 @@ jobs:
           name: test-results
           path: test-results/
           if-no-files-found: ignore
-      - name: Upload the built site
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist
-          include-hidden-files: true
-          if-no-files-found: error
 
   # Balance thresholds from CLAUDE.md are hard failures from M6 on: 1,000 games at a fixed seed.
   balance:
@@ -67,27 +58,49 @@ jobs:
       - name: Headless sim, 1,000 games (strict)
         run: npm run sim -- --games 1000 --seed 1 --strict
 
-  # Azure Static Web Apps (Free): the built game from dist/, plus the Discord login functions in api/
-  # (built by the deploy action). The token is a repo secret: AZURE_STATIC_WEB_APPS_API_TOKEN.
+  # Azure Container Apps (see infra/README.md). Signs in as id-game-spellstick-deploy, which
+  # trusts only this repo's main branch, so no Azure password is stored in GitHub.
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test-and-build, balance]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     environment:
       name: production
       url: https://spellstick.games.darkspace.press
+    env:
+      IMAGE: acrha7siia4h4zia.azurecr.io/game-spellstick:${{ github.sha }}
+      APP: ca-game-spellstick
+      RG: rg-game-spellstick
+      URL: https://ca-game-spellstick.proudbush-0a90b692.eastus2.azurecontainerapps.io
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: azure/login@v3
         with:
-          name: dist
-          path: dist
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          action: upload
-          app_location: dist
-          api_location: api
-          output_location: ''
-          skip_app_build: true
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Build and push the image
+        run: |
+          az acr login -n acrha7siia4h4zia
+          docker build --build-arg BUILD_SHA=${{ github.sha }} -t "$IMAGE" .
+          docker push "$IMAGE"
+      - name: Switch the app to the new image
+        run: |
+          rev=$(az containerapp update -g "$RG" -n "$APP" --image "$IMAGE" --query properties.latestRevisionName -o tsv)
+          echo "New revision: $rev"
+          echo "REVISION=$rev" >> "$GITHUB_ENV"
+      - name: Check the new version is healthy
+        run: |
+          for i in $(seq 1 30); do
+            # A request wakes the app if it has stopped for being idle.
+            curl -s -o /dev/null --max-time 20 "$URL/healthz" || true
+            state=$(az containerapp revision show -g "$RG" -n "$APP" --revision "$REVISION" --query properties.healthState -o tsv)
+            if [ "$state" = "Healthy" ]; then echo "Live at $URL ($REVISION)"; exit 0; fi
+            echo "Waiting ($state)..."
+            sleep 10
+          done
+          echo "The new version didn't become healthy. Logs: az containerapp logs show -g $RG -n $APP" >&2
+          exit 1

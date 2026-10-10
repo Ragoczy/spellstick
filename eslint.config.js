@@ -18,7 +18,7 @@ const browserOnlyGlobals = ['window', 'document', 'navigator', 'localStorage', '
 );
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report', 'api/dist', 'api/node_modules'] },
+  { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report', 'dist-server'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,

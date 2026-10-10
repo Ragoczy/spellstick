@@ -9,11 +9,11 @@
       "url": "http://localhost:5173"
     },
     {
-      "name": "spellstick-swa",
+      "name": "spellstick-server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:swa"],
-      "port": 4280,
-      "url": "http://localhost:4280"
+      "runtimeArgs": ["run", "serve"],
+      "port": 8080,
+      "autoPort": true
     }
   ]
 }

@@ -1,5 +1,0 @@
-*.ts
-!*.d.ts
-src/**/*.test.*
-tsconfig.json
-local.settings.json

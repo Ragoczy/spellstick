@@ -12,7 +12,7 @@ function buildId(): string {
   }
 }
 
-// Azure Static Web Apps serves the game at the site root (https://spellstick.games.darkspace.press/).
+// The game is served at the site root (https://spellstick.games.darkspace.press/).
 export default defineConfig({
   base: '/',
   define: {

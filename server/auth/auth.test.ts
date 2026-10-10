@@ -13,8 +13,8 @@ import {
   type AuthDeps,
   type AuthRequest,
   type AuthResponse,
-} from './auth';
-import { signJwt, verifyJwt } from './jwt';
+} from './auth.js';
+import { signJwt, verifyJwt } from './jwt.js';
 
 const NOW = 1_800_000_000;
 const SECRET = 'test-session-secret-that-is-long-enough-0123456789';
@@ -29,7 +29,7 @@ const ENV = {
   ADMIN_DISCORD_IDS: '777',
 };
 const MEMBER_URL = 'https://discord.com/api/v10/users/@me/guilds/900/member';
-const SWA = 'https://swa-spellstick.azurestaticapps.net';
+const AZURE = 'https://ca-game-spellstick.proudbush-0a90b692.eastus2.azurecontainerapps.io';
 const CUSTOM = 'https://spellstick.games.darkspace.press';
 
 function req(url: string, headers: Record<string, string> = {}): AuthRequest {
@@ -92,24 +92,15 @@ describe('JWT (HS256)', () => {
 });
 
 describe('origin and cookie domain', () => {
-  it('prefers the original URL SWA forwards, then x-forwarded-host, then the request URL', () => {
-    expect(
-      requestOrigin(
-        req('http://internal:7071/api/auth/login', { 'x-ms-original-url': `${CUSTOM}/api/auth/login` }),
-      ),
-    ).toBe(CUSTOM);
-    expect(
-      requestOrigin(
-        req('http://internal:7071/x', { 'x-forwarded-host': 'localhost:4280', 'x-forwarded-proto': 'http' }),
-      ),
-    ).toBe('http://localhost:4280');
-    expect(requestOrigin(req(`${SWA}/api/auth/login`))).toBe(SWA);
+  it('takes the origin from the public URL of the request', () => {
+    expect(requestOrigin(req(`${CUSTOM}/api/auth/login?x=1`))).toBe(CUSTOM);
+    expect(requestOrigin(req('http://localhost:8080/api/auth/login'))).toBe('http://localhost:8080');
   });
 
   it('shares the cookie across *.games.darkspace.press and is host-only elsewhere', () => {
     expect(cookieDomainFor(CUSTOM)).toBe('.games.darkspace.press');
     expect(cookieDomainFor('https://games.darkspace.press')).toBe('.games.darkspace.press');
-    expect(cookieDomainFor(SWA)).toBeUndefined();
+    expect(cookieDomainFor(AZURE)).toBeUndefined();
     expect(cookieDomainFor('http://localhost:4280')).toBeUndefined();
     expect(cookieDomainFor('https://evilgames.darkspace.press')).toBeUndefined();
   });
@@ -132,7 +123,7 @@ describe('origin and cookie domain', () => {
 
 describe('GET /api/auth/login', () => {
   it('redirects to Discord asking for identity and server roles, with a random state and the callback on this origin', () => {
-    const r = login(req(`${SWA}/api/auth/login`), deps());
+    const r = login(req(`${AZURE}/api/auth/login`), deps());
     expect(r.status).toBe(302);
     const to = new URL(r.headers!.Location!);
     expect(to.origin + to.pathname).toBe('https://discord.com/oauth2/authorize');
@@ -140,18 +131,18 @@ describe('GET /api/auth/login', () => {
     expect(to.searchParams.get('scope')).toBe('identify guilds.members.read');
     expect(to.searchParams.get('prompt')).toBe('none');
     expect(to.searchParams.get('client_id')).toBe('1234');
-    expect(to.searchParams.get('redirect_uri')).toBe(`${SWA}/api/auth/callback`);
+    expect(to.searchParams.get('redirect_uri')).toBe(`${AZURE}/api/auth/callback`);
     const state = to.searchParams.get('state')!;
     expect(state.length).toBeGreaterThanOrEqual(40);
     const c = cookie(r, STATE_COOKIE)!;
     expect(c).toMatchObject({ value: state, httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 600 });
     expect(c.domain).toBeUndefined();
-    expect(login(req(`${SWA}/api/auth/login`), deps()).headers!.Location).not.toBe(r.headers!.Location);
+    expect(login(req(`${AZURE}/api/auth/login`), deps()).headers!.Location).not.toBe(r.headers!.Location);
   });
 
   it('is a 500 (and says which setting) when the client id is missing', () => {
     const d = deps({ env: {} });
-    expect(login(req(`${SWA}/api/auth/login`), d).status).toBe(500);
+    expect(login(req(`${AZURE}/api/auth/login`), d).status).toBe(500);
     expect(d.logs.join()).toContain('DISCORD_CLIENT_ID');
   });
 });
@@ -169,7 +160,7 @@ describe('GET /api/auth/callback', () => {
   it('exchanges the code server-side, looks up the user and their roles, and sets a 30-day session cookie', async () => {
     const discord = fakeDiscord();
     const d = deps({ fetch: discord.fetch });
-    const r = await cb(SWA, 'abc', 'abc', d);
+    const r = await cb(AZURE, 'abc', 'abc', d);
     expect(r.status).toBe(302);
     expect(r.headers!.Location).toBe('/');
 
@@ -179,7 +170,7 @@ describe('GET /api/auth/callback', () => {
     expect(Object.fromEntries(form)).toEqual({
       grant_type: 'authorization_code',
       code: 'the-code',
-      redirect_uri: `${SWA}/api/auth/callback`,
+      redirect_uri: `${AZURE}/api/auth/callback`,
     });
     const basic = (token!.init!.headers as Record<string, string>).Authorization!;
     expect(Buffer.from(basic.replace(/^Basic /, ''), 'base64').toString()).toBe('1234:client-secret');
@@ -216,7 +207,7 @@ describe('GET /api/auth/callback', () => {
       ['abc', 'abcd'],
     ] as const) {
       const discord = fakeDiscord();
-      const r = await cb(SWA, state, saved, deps({ fetch: discord.fetch }));
+      const r = await cb(AZURE, state, saved, deps({ fetch: discord.fetch }));
       expect(r.headers!.Location).toBe('/?login=failed');
       expect(cookie(r, SESSION_COOKIE)).toBeUndefined();
       expect(discord.calls).toEqual([]);
@@ -225,7 +216,7 @@ describe('GET /api/auth/callback', () => {
 
   it('refuses people outside the Darkspace server, or without a Players role', async () => {
     const outside = await cb(
-      SWA,
+      AZURE,
       'abc',
       'abc',
       deps({ fetch: fakeDiscord({ member: new Response('', { status: 404 }) }).fetch }),
@@ -233,7 +224,7 @@ describe('GET /api/auth/callback', () => {
     expect(outside.headers!.Location).toBe('/?login=not-member');
     expect(cookie(outside, SESSION_COOKIE)).toBeUndefined();
     const noRole = await cb(
-      SWA,
+      AZURE,
       'abc',
       'abc',
       deps({ fetch: fakeDiscord({ member: Response.json({ roles: ['111'] }) }).fetch }),
@@ -245,7 +236,7 @@ describe('GET /api/auth/callback', () => {
   it('puts the role from the access rule in the session', async () => {
     const role = async (discord: ReturnType<typeof fakeDiscord>) =>
       verifyJwt(
-        cookie(await cb(SWA, 'abc', 'abc', deps({ fetch: discord.fetch })), SESSION_COOKIE)!.value,
+        cookie(await cb(AZURE, 'abc', 'abc', deps({ fetch: discord.fetch })), SESSION_COOKIE)!.value,
         SECRET,
         NOW,
       )!.role;
@@ -264,12 +255,12 @@ describe('GET /api/auth/callback', () => {
 
   it('is a 500 without the server id, rather than letting anyone in', async () => {
     const d = deps({ env: { ...ENV, DISCORD_GUILD_ID: '' } });
-    expect((await cb(SWA, 'abc', 'abc', d)).status).toBe(500);
+    expect((await cb(AZURE, 'abc', 'abc', d)).status).toBe(500);
     expect(d.logs.join()).toContain('DISCORD_GUILD_ID');
   });
 
   it('sends a cancelled login home without a session', async () => {
-    const r = await callback(req(`${SWA}/api/auth/callback?error=access_denied&state=abc`), deps());
+    const r = await callback(req(`${AZURE}/api/auth/callback?error=access_denied&state=abc`), deps());
     expect(r.headers!.Location).toBe('/?login=cancelled');
     expect(cookie(r, SESSION_COOKIE)).toBeUndefined();
   });
@@ -284,7 +275,7 @@ describe('GET /api/auth/callback', () => {
     ];
     for (const discord of bad) {
       const d = deps({ fetch: discord.fetch });
-      const r = await cb(SWA, 'abc', 'abc', d);
+      const r = await cb(AZURE, 'abc', 'abc', d);
       expect(r.headers!.Location).toBe('/?login=failed');
       expect(cookie(r, SESSION_COOKIE)).toBeUndefined();
       const logged = d.logs.join('\n');
@@ -299,7 +290,7 @@ describe('GET /api/auth/me and POST /api/auth/logout', () => {
     `${SESSION_COOKIE}=${signJwt({ sub: '80351110224678912', username: 'nelly', avatar: null, role: 'player', iat: NOW, exp: NOW + 100, ...claims }, secret)}`;
 
   it('returns the user from a valid session', () => {
-    const r = me(req(`${SWA}/api/auth/me`, { cookie: session() }), deps());
+    const r = me(req(`${AZURE}/api/auth/me`, { cookie: session() }), deps());
     expect(r.status).toBe(200);
     expect(r.jsonBody).toMatchObject({
       id: '80351110224678912',
@@ -318,21 +309,21 @@ describe('GET /api/auth/me and POST /api/auth/logout', () => {
       session({}, 'wrong-secret'),
       session({ role: 'god' }),
     ]) {
-      expect(me(req(`${SWA}/api/auth/me`, c ? { cookie: c } : {}), deps()).status).toBe(401);
+      expect(me(req(`${AZURE}/api/auth/me`, c ? { cookie: c } : {}), deps()).status).toBe(401);
     }
   });
 
   it('logout clears the cookie with the same domain it was set with', () => {
-    const swa = cookie(logout(req(`${SWA}/api/auth/logout`, { origin: SWA })), SESSION_COOKIE)!;
-    expect(swa).toMatchObject({ value: '', maxAge: 0, path: '/' });
-    expect(swa.domain).toBeUndefined();
+    const onAzure = cookie(logout(req(`${AZURE}/api/auth/logout`, { origin: AZURE })), SESSION_COOKIE)!;
+    expect(onAzure).toMatchObject({ value: '', maxAge: 0, path: '/' });
+    expect(onAzure.domain).toBeUndefined();
     const custom = cookie(logout(req(`${CUSTOM}/api/auth/logout`, { origin: CUSTOM })), SESSION_COOKIE)!;
     expect(custom.domain).toBe('.games.darkspace.press');
   });
 
   it("logout refuses requests from another site's pages", () => {
-    for (const headers of [{}, { origin: 'https://evil.example' }]) {
-      const r = logout(req(`${SWA}/api/auth/logout`, headers));
+    for (const headers of [{}, { origin: 'https://evil.example' }] as Record<string, string>[]) {
+      const r = logout(req(`${AZURE}/api/auth/logout`, headers));
       expect(r.status).toBe(403);
       expect(r.cookies).toBeUndefined();
     }

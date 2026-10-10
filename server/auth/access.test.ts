@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accessSettings, checkAccess, parseIdList, type AccessSettings } from './access';
+import { accessSettings, checkAccess, parseIdList, type AccessSettings } from './access.js';
 
 const S: AccessSettings = {
   guildId: '900',

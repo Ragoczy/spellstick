@@ -1,8 +1,6 @@
 node_modules
 dist
-api/dist
-api/local.settings.json
-.swa
+dist-server
 test-results
 playwright-report
 *.log

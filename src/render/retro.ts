@@ -2,14 +2,15 @@ import Phaser from 'phaser';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from './view';
 
 /**
- * EXPERIMENT: an 8-bit look, switched on with `?look=8bit` in the URL.
+ * The 8-bit look, the default since M8 (Paul, 2026-10-10). `?look=classic` in the URL brings
+ * back the original smooth vector look.
  *
  * The world (rink, players, ball, spell effects) is drawn into a low-resolution texture every
  * frame and shown scaled up with nearest-neighbour filtering, so everything is chunky pixels.
- * The HUD stays at full resolution on top. Without the URL flag nothing here runs.
+ * The HUD stays at full resolution on top. With `?look=classic` nothing here runs.
  */
 export const RETRO =
-  typeof location !== 'undefined' && new URLSearchParams(location.search).get('look') === '8bit';
+  typeof location === 'undefined' || new URLSearchParams(location.search).get('look') !== 'classic';
 
 /** Screen pixels per art pixel. */
 export const PIX = 3;

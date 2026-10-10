@@ -3,6 +3,7 @@ import { createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId, type TeamInfo } from '../content/teams';
 import { TEXT } from '../content/text';
 import {
+  arenaFor,
   arenaGeometry,
   chargeFraction,
   choosePassTarget,
@@ -71,7 +72,7 @@ export class MatchScene extends Phaser.Scene {
   private hud!: Hud;
   private spellBar!: SpellBar;
   private rink?: Phaser.GameObjects.Image;
-  /** Experimental 8-bit look (`?look=8bit`). */
+  /** The 8-bit look (the default; off with `?look=classic`). */
   private retro?: RetroWorld;
   /** Gold shields across the goal mouths while a goalie's Ward is up. */
   private wardFx!: Phaser.GameObjects.Graphics;
@@ -165,9 +166,8 @@ export class MatchScene extends Phaser.Scene {
     const inputs: InputCommand[] = [];
     for (const p of this.state.players) {
       if (p.id === this.controlledId) {
-        // Until the mouse moves, aim the stick toward the goal we attack.
-        const fallbackAim = { x: p.team === 0 ? 100 : -100, y: p.pos.y };
-        inputs[p.id] = this.input_.command(fallbackAim);
+        // The goal this player attacks is the one the other team defends.
+        inputs[p.id] = this.input_.command(p.pos, arenaFor(this.config).goals[p.team === 0 ? 1 : 0]);
       } else {
         inputs[p.id] = this.controllers[p.id]!.decide(this.state, p.id);
       }
@@ -256,7 +256,12 @@ export class MatchScene extends Phaser.Scene {
     const f = this.state.faceoff;
     if (f) {
       this.controlledId = f.takers[HUMAN_TEAM];
-      this.hud.flash(TEXT.faceoff, 1500, PALETTE.mana, TEXT.faceoffHint);
+      this.hud.flash(
+        TEXT.faceoff,
+        1500,
+        PALETTE.mana,
+        this.input_.usingPad ? TEXT.faceoffHintPad : TEXT.faceoffHint,
+      );
     } else {
       this.controlledId = this.state.players.findIndex((p) => p.team === HUMAN_TEAM && p.role === 'runner');
     }
@@ -319,6 +324,7 @@ export class MatchScene extends Phaser.Scene {
 
   override update(_time: number, deltaMs: number): void {
     // Paused: keep drawing, don't advance (and drop any presses made while paused).
+    this.input_.pollPad(!this.paused && this.playing);
     const alpha = this.paused ? 1 : this.stepper.advance(deltaMs / 1000);
     if (this.paused) this.input_.consumePresses();
     const s = this.state;
@@ -347,6 +353,7 @@ export class MatchScene extends Phaser.Scene {
     });
     this.ballView.update(lerp(this.prev.ball.x, s.ball.pos.x), lerp(this.prev.ball.y, s.ball.pos.y), s.ball);
     this.hud.update(s);
+    this.spellBar.showPadLabels(this.input_.usingPad);
     this.spellBar.update(me);
     this.drawWards(s);
     this.retro?.render();

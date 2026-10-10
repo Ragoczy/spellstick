@@ -5,6 +5,7 @@
 export const TEXT = {
   faceoff: 'FACEOFF',
   faceoffHint: 'Click when the whistle blows. Jump early and you lose it.',
+  faceoffHintPad: 'Pull RT when the whistle blows. Jump early and you lose it.',
   whistle: 'WHISTLE!',
   misfire: 'MISFIRE!',
   goal: 'GOAL!',

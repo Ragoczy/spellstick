@@ -70,5 +70,16 @@ Paul's call: recorded clips only (no browser text-to-speech). The game stays tex
   - [x] Generate all 28 angry takes and measure them.
   - [x] Paul listens to the new takes and flags any to redo (2026-10-10: "things look good").
 
+## M8 — 8-bit art and controller support (Paul, 2026-10-10)
+Paul's call: "merge the art, can we add controller support?"
+- [x] The 8-bit look is the default; the old look stays one URL flag away (`?look=classic`).
+- [x] Play a whole match on a gamepad (standard mapping: Xbox, PlayStation, Switch Pro, most PC pads): left stick or D-pad moves (analog: a light push walks); right stick aims; pass, shoot (hold and release), check, all three spells, switch player, pause, and mute.
+- [x] Aiming with a stick is helped: the aim point lands on the goal line when the stick points at the goal, so shots and Bent Shot go where you point.
+- [x] Menus work on the pad: D-pad or left stick moves between buttons, A picks, B goes back, Start pauses and resumes.
+- [x] The HUD shows pad buttons when you're playing on a pad and keys when you're on keyboard and mouse, switching automatically; the controls card lists both.
+- [x] Keyboard and mouse still work exactly as before, and you can switch between them mid-match.
+- [x] Tests: unit tests for stick deadzones, aim, button mapping, and press edges; a Playwright test that plays the menus and a match with a simulated gamepad.
+- **Done when:** with only a gamepad, Paul can go from the title screen through a match to the results and back, and the 8-bit look is what loads by default.
+
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

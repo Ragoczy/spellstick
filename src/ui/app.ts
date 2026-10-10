@@ -7,6 +7,7 @@ import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
 import { Sfx, type SoundName } from './audio';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
+import { PadMenus } from './padMenus';
 import { AnnouncerVoice } from './voice';
 import {
   controlsScreen,
@@ -22,7 +23,7 @@ const SELECTION_KEY = 'spellstick.selection';
 /**
  * The menu flow (SPEC §9): title → team select → (controls card, first time) → match →
  * results → title. The title screen plays an AI-vs-AI match behind it. Also owns the
- * announcer, sound, pause (Esc), and mute (M).
+ * announcer, sound, pause (Esc), and mute (M). Menus also work on a gamepad (M8).
  */
 export class App {
   private readonly root: HTMLElement;
@@ -33,6 +34,10 @@ export class App {
   private readonly config = makeConfig();
   private scene!: MatchScene;
   private current: HTMLElement | null = null;
+  /** What B on a gamepad does on the current screen. */
+  private backAction: (() => void) | null = null;
+  private readonly padToast: HTMLElement;
+  private padToastTimer = 0;
   private selection: TeamSelection;
   private tally: [TeamTally, TeamTally] = emptyTally();
   private inMatch = false;
@@ -50,8 +55,23 @@ export class App {
     this.root.append(this.muteButton);
     this.updateMuteLabel();
     this.selection = loadSelection();
+    this.padToast = document.createElement('div');
+    this.padToast.id = 'pad-toast';
+    this.padToast.setAttribute('role', 'status');
+    this.root.append(this.padToast);
 
     window.addEventListener('keydown', (e) => this.onKey(e));
+    // The focus ring for pad navigation goes away once the mouse or keyboard is back.
+    const offPad = () => document.body.classList.remove('pad-nav');
+    window.addEventListener('pointermove', offPad);
+    window.addEventListener('keydown', offPad);
+    new PadMenus({
+      screen: () => this.current,
+      back: () => this.backAction,
+      togglePause: () => this.togglePause(),
+      toggleMute: () => this.toggleMute(),
+      connected: () => this.notifyPad(),
+    }).start();
     // Any click is a user gesture: wake the audio context.
     window.addEventListener('pointerdown', () => this.sfx.unlock(), { capture: true });
     game.events.once(SCENE_EVENTS.ready, () => this.onSceneReady());
@@ -78,12 +98,15 @@ export class App {
     this.showTitle();
   }
 
-  private show(node: HTMLElement | null): void {
+  /** Shows a menu screen (or none). `back` is what B on a gamepad does there. */
+  private show(node: HTMLElement | null, back: (() => void) | null = null): void {
     this.current?.remove();
     this.current = node;
+    this.backAction = back;
     if (node) {
       this.root.append(node);
-      node.querySelector<HTMLButtonElement>('.btn.primary, button')?.focus();
+      // The main action first (Play, Start match, Resume), so A or Enter does the obvious thing.
+      (node.querySelector<HTMLButtonElement>('.btn.primary') ?? node.querySelector('button'))?.focus();
     }
   }
 
@@ -111,6 +134,7 @@ export class App {
               this.click(() => this.showTitle()),
               'Back',
             ),
+            this.click(() => this.showTitle()),
           ),
         ),
       }),
@@ -134,10 +158,12 @@ export class App {
                 this.click(() => this.startMatch()),
                 'Face off!',
               ),
+              this.click(() => this.showTeamSelect()),
             );
           }
         },
       }),
+      this.click(() => this.showTitle()),
     );
   }
 
@@ -168,10 +194,12 @@ export class App {
               this.click(() => this.showPause()),
               'Back',
             ),
+            this.click(() => this.showPause()),
           ),
         ),
         quit: this.click(() => this.showTitle()),
       }),
+      this.click(() => this.resume()),
     );
   }
 
@@ -181,12 +209,22 @@ export class App {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
-      if (this.inMatch && !this.scene.paused) this.pause();
-      else if (this.inMatch && this.scene.paused) this.resume();
-    } else if (e.key === 'm' || e.key === 'M') {
-      this.toggleMute();
-    }
+    if (e.key === 'Escape') this.togglePause();
+    else if (e.key === 'm' || e.key === 'M') this.toggleMute();
+  }
+
+  /** Esc, or Start / Menu on a gamepad. */
+  private togglePause(): void {
+    if (this.inMatch && !this.scene.paused) this.pause();
+    else if (this.inMatch && this.scene.paused) this.resume();
+  }
+
+  /** Browsers only reveal a gamepad once a button is pressed; say we've got it. */
+  private notifyPad(): void {
+    this.padToast.textContent = 'Controller connected';
+    this.padToast.classList.add('show');
+    window.clearTimeout(this.padToastTimer);
+    this.padToastTimer = window.setTimeout(() => this.padToast.classList.remove('show'), 2500);
   }
 
   private toggleMute(): void {

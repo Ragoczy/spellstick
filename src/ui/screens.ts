@@ -1,6 +1,7 @@
 import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
 import type { Difficulty } from '../sim';
+import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import type { TeamTally } from './matchStats';
 
 /** Tiny DOM helper: element with attributes and children. */
@@ -133,18 +134,28 @@ export function teamSelectScreen(
   return node;
 }
 
-/** The one-screen controls card (SPEC §5, M6 done-when). */
+const padKeys = (buttons: readonly PadButton[], sep = ' or ') => buttons.map((b) => PAD_LABEL[b]).join(sep);
+
+/** The one-screen controls card (SPEC §5, M6 done-when), for keyboard and mouse and for a gamepad (M8). */
 export function controlsScreen(onDone: () => void, doneLabel = 'Got it'): HTMLElement {
-  const rows: [string, string][] = [
-    ['W A S D', 'Move'],
-    ['Mouse', 'Aim your stick (passes, shots, and spells go where you point)'],
-    ['Left click', 'Pass to the teammate you aim at'],
-    ['Hold left click, release', 'Shoot (hold longer for a harder shot)'],
-    ['Right click', 'Body check (a short dash the way you move)'],
-    [`Q / E / R`, `${SPELLS.hexShove.name} / ${SPELLS.quickstep.name} / ${SPELLS.bentShot.name}`],
-    ['Space', 'On defense: switch to the teammate nearest the ball'],
-    ['Esc', 'Pause'],
-    ['M', 'Sound on/off'],
+  const rows: [string, string, string][] = [
+    ['W A S D', 'Left stick or D-pad', 'Move'],
+    ['Mouse', 'Right stick', 'Aim your stick (passes, shots, and spells go where you point)'],
+    ['Left click', padKeys(PAD_BINDINGS.primary), 'Pass to the teammate you aim at'],
+    [
+      'Hold left click, release',
+      `Hold ${padKeys(PAD_BINDINGS.primary)}, release`,
+      'Shoot (hold longer for a harder shot)',
+    ],
+    ['Right click', padKeys(PAD_BINDINGS.check), 'Body check (a short dash the way you move)'],
+    [
+      'Q / E / R',
+      padKeys(PAD_BINDINGS.spells, ' / '),
+      `${SPELLS.hexShove.name} / ${SPELLS.quickstep.name} / ${SPELLS.bentShot.name}`,
+    ],
+    ['Space', padKeys(PAD_BINDINGS.switchPlayer), 'On defense: switch to the teammate nearest the ball'],
+    ['Esc', padKeys(PAD_BINDINGS.pause), 'Pause'],
+    ['M', padKeys(PAD_BINDINGS.mute), 'Sound on/off'],
   ];
   return screen(
     'controls',
@@ -152,12 +163,22 @@ export function controlsScreen(onDone: () => void, doneLabel = 'Got it'): HTMLEl
     el(
       'table',
       { class: 'controls' },
-      ...rows.map(([k, v]) => el('tr', {}, el('td', {}, k), el('td', {}, v))),
+      el('tr', {}, el('th', {}, 'Keyboard & mouse'), el('th', {}, 'Controller'), el('th', {}, '')),
+      ...rows.map(([k, p, v]) => el('tr', {}, el('td', {}, k), el('td', {}, p), el('td', {}, v))),
     ),
     el(
       'ul',
       { class: 'tips' },
-      el('li', {}, 'Faceoffs: click the moment the whistle blows. Click early and you lose it.'),
+      el(
+        'li',
+        {},
+        `Faceoffs: click (or pull ${PAD_LABEL[PAD_BINDINGS.primary[0]]}) the moment the whistle blows. Go early and you lose it.`,
+      ),
+      el(
+        'li',
+        {},
+        'On a controller, let go of the right stick and you aim where you run. Point at the goal and the shot goes on net.',
+      ),
       el(
         'li',
         {},

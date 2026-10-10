@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SPELLS } from '../content/spells';
 import { canCast, RUNNER_SPELLS, spellCost, type Player, type SimConfig } from '../sim';
+import { PAD_BINDINGS, PAD_LABEL } from '../ui/gamepad';
 import { PALETTE, toCss } from './palette';
 import { CANVAS_HEIGHT } from './view';
 
@@ -12,7 +13,7 @@ const MANA_H = 8;
 const TOP = CANVAS_HEIGHT - SIZE - MANA_H - 16;
 
 /**
- * The controlled player's mana bar and Q/E/R spell icons (SPEC §8 HUD). Each icon shows
+ * The controlled player's mana bar and Q/E/R (or X/Y/B on a pad) spell icons (SPEC §8 HUD). Each icon shows
  * its key, a cooldown sweep, dims when you can't afford it, and glows gold while active
  * or armed. Sits in the empty corner below the rink.
  */
@@ -20,6 +21,9 @@ export class SpellBar {
   private readonly g: Phaser.GameObjects.Graphics;
   private lastKey = '';
   private readonly labels: Phaser.GameObjects.Text[] = [];
+  /** The key (Q/E/R) or pad button (X/Y/B) shown on each icon. */
+  private readonly keyLabels: Phaser.GameObjects.Text[] = [];
+  private padLabels = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -45,7 +49,17 @@ export class SpellBar {
         .setOrigin(0.5)
         .setDepth(151);
       this.labels.push(key, name);
+      this.keyLabels.push(key);
     });
+  }
+
+  /** Show pad buttons instead of keys (when the player is on a gamepad). */
+  showPadLabels(pad: boolean): void {
+    if (pad === this.padLabels) return;
+    this.padLabels = pad;
+    RUNNER_SPELLS.forEach((spell, i) =>
+      this.keyLabels[i]!.setText(pad ? PAD_LABEL[PAD_BINDINGS.spells[i]!] : (SPELLS[spell].key ?? '')),
+    );
   }
 
   setVisible(visible: boolean): void {

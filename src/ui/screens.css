@@ -45,6 +45,12 @@
   box-shadow: 0 0 40px rgba(255, 166, 48, 0.15);
   box-sizing: border-box;
 }
+/* The tall screens scroll inside the panel on short windows (a focused button scrolls into view on a pad). */
+#controls .panel,
+#team-select .panel {
+  max-height: 100%;
+  overflow-y: auto;
+}
 
 .title-logo {
   font-family: var(--serif);
@@ -189,16 +195,53 @@ button {
   border-collapse: collapse;
   font-size: 15px;
 }
-.controls td {
+.controls td,
+.controls th {
   padding: 6px 8px;
   border-bottom: 1px solid rgba(242, 239, 230, 0.1);
   vertical-align: top;
 }
-.controls td:first-child {
-  white-space: nowrap;
+.controls th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.controls td:first-child,
+.controls td:nth-child(2) {
   color: var(--gold);
   font-weight: 600;
-  width: 34%;
+  width: 24%;
+}
+
+/* Gamepad menu navigation: a clear ring on the focused button. */
+body.pad-nav .btn:focus,
+body.pad-nav .choice:focus {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* "Controller connected" notice. */
+#pad-toast {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--gold);
+  background: rgba(10, 8, 18, 0.88);
+  color: var(--ink);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  z-index: 20;
+}
+#pad-toast.show {
+  opacity: 1;
 }
 .tips {
   margin: 14px 0 0;

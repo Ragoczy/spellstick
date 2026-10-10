@@ -6,16 +6,20 @@ A fast, top-down, arcade box-lacrosse game for the browser, set in Daniel Kensin
 
 Pick your team, an opponent, and a difficulty, then play a full match: four 2:30 periods, faceoffs, a 30-second shot clock, the crease rule, sudden-death overtime, body checks, and three spells.
 
-| Input | Action |
-| --- | --- |
-| W A S D | Move |
-| Mouse | Aim your stick |
-| Left click / hold and release | Pass / shoot |
-| Right click | Body check |
-| Q / E / R | Spells: Hex Shove, Quickstep, Bent Shot (placeholder names) |
-| Space | Switch to the teammate nearest the ball (on defense) |
-| Esc | Pause |
-| M | Sound on/off |
+| Keyboard & mouse | Controller | Action |
+| --- | --- | --- |
+| W A S D | Left stick or D-pad | Move |
+| Mouse | Right stick | Aim your stick |
+| Left click / hold and release | RT or A / hold and release | Pass / shoot |
+| Right click | LT or LB | Body check |
+| Q / E / R | X / Y / B | Spells: Hex Shove, Quickstep, Bent Shot (placeholder names) |
+| Space | RB | Switch to the teammate nearest the ball (on defense) |
+| Esc | Menu (Start) | Pause |
+| M | View (Back) | Sound on/off |
+
+Any controller the browser sees as a standard gamepad works (Xbox, PlayStation, Switch Pro, most PC pads); press a button so the browser notices it. Menus work on the pad too: D-pad to move, A to pick, B to go back.
+
+The 8-bit look is the default; add `?look=classic` to the URL for the original smooth look.
 
 ## Develop
 

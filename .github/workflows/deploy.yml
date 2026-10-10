@@ -67,9 +67,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    environment:
-      name: production
-      url: https://spellstick.games.darkspace.press
+    # No `environment:` here: it would change the OIDC subject to ...:environment:production,
+    # which the federated credential (…:ref:refs/heads/main) doesn't match.
     env:
       IMAGE: acrha7siia4h4zia.azurecr.io/game-spellstick:${{ github.sha }}
       APP: ca-game-spellstick

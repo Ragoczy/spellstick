@@ -22,6 +22,7 @@ export type AuthState =
 export const LOGIN_URL = '/api/auth/login';
 const ME_URL = '/api/auth/me';
 const LOGOUT_URL = '/api/auth/logout';
+const UNLINK_URL = '/api/auth/unlink';
 
 export const LOGIN_MESSAGES: Record<string, string> = {
   failed: "Discord login didn't work. Try again.",
@@ -31,6 +32,8 @@ export const LOGIN_MESSAGES: Record<string, string> = {
   'no-role':
     "Your Darkspace Discord account doesn't have the Players role yet. Ask a mod for it, then log in again.",
   unavailable: "Can't reach the login server right now. Try again in a moment.",
+  unlinked:
+    'Your Spellstick data has been deleted and the game is disconnected from Discord. Your Discord account was not affected.',
 };
 
 /** Reads the /api/auth/me answer. `null` means the auth API isn't there (or is broken). */
@@ -74,6 +77,38 @@ export async function logOut(): Promise<void> {
   } catch {
     // The cookie may outlive this; the next /me check will say so.
   }
+}
+
+/** Every key the game saves in the browser starts with this (team choice, sound on/off). */
+export const LOCAL_DATA_PREFIX = 'spellstick.';
+
+/** Removes everything the game saved in this browser. */
+export function clearLocalGameData(storage: Storage): void {
+  const keys: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key?.startsWith(LOCAL_DATA_PREFIX)) keys.push(key);
+  }
+  for (const key of keys) storage.removeItem(key);
+}
+
+/**
+ * "Unlink my Discord account": the server ends the session (it stores nothing else), then this
+ * browser's saved settings go. False if the server didn't confirm; nothing is cleared then.
+ */
+export async function unlinkAccount(): Promise<boolean> {
+  try {
+    const res = await fetch(UNLINK_URL, { method: 'POST', credentials: 'same-origin' });
+    if (!res.ok) return false;
+  } catch {
+    return false;
+  }
+  try {
+    clearLocalGameData(localStorage);
+  } catch {
+    // Storage blocked: there was nothing saved.
+  }
+  return true;
 }
 
 /** ?login=failed|cancelled from the callback: returns the message and tidies the address bar. */

@@ -53,7 +53,7 @@ export interface AuthDeps {
   env: Record<string, string | undefined>;
   fetch: typeof fetch;
   nowSeconds: () => number;
-  /** For failures only. Never pass it secrets, codes, or tokens. */
+  /** For failures and the unlink audit line only. Never pass it secrets, codes, tokens, or Discord IDs. */
   log: (message: string) => void;
 }
 
@@ -302,4 +302,31 @@ export function sameOrigin(req: AuthRequest): boolean {
 export function logout(req: AuthRequest): AuthResponse {
   if (!sameOrigin(req)) return { status: 403, headers: NO_STORE, jsonBody: { error: 'bad_origin' } };
   return { status: 204, headers: NO_STORE, cookies: [sessionCookie(requestOrigin(req), '', 0)] };
+}
+
+/** The whole audit entry for an unlink: the time and what happened, and no identifier of any kind. */
+export const unlinkAuditLine = (nowSeconds: number) =>
+  `audit: ${new Date(nowSeconds * 1000).toISOString()} account unlinked`;
+
+/**
+ * POST /api/auth/unlink ("Unlink my Discord account"): the server stores nothing per player and
+ * never kept Discord's token, so this ends the session and writes a time-only audit line. The
+ * browser clears its own saved settings. Discord's token revocation is deliberately not called:
+ * it would end the player's whole authorization for this Discord app, which the card game shares.
+ */
+export function unlink(req: AuthRequest, deps: AuthDeps): AuthResponse {
+  if (!sameOrigin(req)) return { status: 403, headers: NO_STORE, jsonBody: { error: 'bad_origin' } };
+  const secret = deps.env.SESSION_SECRET;
+  if (!secret) return notConfigured(deps, 'SESSION_SECRET');
+  const token = parseCookies(req.headers.get('cookie')).get(SESSION_COOKIE);
+  if (!token || !verifyJwt(token, secret, deps.nowSeconds())) {
+    return { status: 401, headers: NO_STORE, jsonBody: { error: 'unauthenticated' } };
+  }
+  deps.log(unlinkAuditLine(deps.nowSeconds()));
+  return {
+    status: 200,
+    headers: NO_STORE,
+    jsonBody: { unlinked: true },
+    cookies: [sessionCookie(requestOrigin(req), '', 0)],
+  };
 }

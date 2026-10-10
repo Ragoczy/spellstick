@@ -165,6 +165,17 @@ describe('routing and safety', () => {
     );
   });
 
+  it('routes POST /api/auth/unlink, from this site only', async () => {
+    expect((await get('/api/auth/unlink', { method: 'POST' })).status).toBe(403);
+    expect((await get('/api/auth/unlink')).status).toBe(405);
+    // No SESSION_SECRET in this test server, so a same-site request gets as far as the settings check.
+    const r = await get('/api/auth/unlink', {
+      method: 'POST',
+      headers: { origin: `http://localhost:${port}` },
+    });
+    expect(r.status).toBe(500);
+  });
+
   it('uses https for the redirect when the ingress says the browser used it', async () => {
     const r = await get('/api/auth/me', {
       headers: { host: 'spellstick.games.darkspace.press', 'x-forwarded-proto': 'https' },

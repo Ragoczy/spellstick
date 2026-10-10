@@ -10,6 +10,8 @@ import {
   me,
   parseCookies,
   requestOrigin,
+  unlink,
+  unlinkAuditLine,
   type AuthDeps,
   type AuthRequest,
   type AuthResponse,
@@ -326,6 +328,68 @@ describe('GET /api/auth/me and POST /api/auth/logout', () => {
       const r = logout(req(`${AZURE}/api/auth/logout`, headers));
       expect(r.status).toBe(403);
       expect(r.cookies).toBeUndefined();
+    }
+  });
+});
+
+describe('POST /api/auth/unlink ("Unlink my Discord account")', () => {
+  const ID = '80351110224678912';
+  const session = (claims: Partial<Parameters<typeof signJwt>[0]> = {}) =>
+    `${SESSION_COOKIE}=${signJwt({ sub: ID, username: 'nelly', avatar: '8342729096ea3675442027381ff50dfe', role: 'player', iat: NOW, exp: NOW + 100, ...claims }, SECRET)}`;
+  const unlinkReq = (headers: Record<string, string>, origin = CUSTOM) =>
+    req(`${origin}/api/auth/unlink`, { origin, ...headers });
+
+  it('ends the session: the cookie is cleared with the domain it was set with', () => {
+    const d = deps();
+    const r = unlink(unlinkReq({ cookie: session() }), d);
+    expect(r.status).toBe(200);
+    expect(r.jsonBody).toEqual({ unlinked: true });
+    expect(r.headers!['Cache-Control']).toBe('no-store');
+    expect(cookie(r, SESSION_COOKIE)).toMatchObject({
+      value: '',
+      maxAge: 0,
+      path: '/',
+      domain: '.games.darkspace.press',
+    });
+    const onAzure = unlink(unlinkReq({ cookie: session() }, AZURE), deps());
+    expect(cookie(onAzure, SESSION_COOKIE)!.domain).toBeUndefined();
+  });
+
+  it('writes one audit line with only the time and "account unlinked", and keeps no identifier', () => {
+    const d = deps();
+    const r = unlink(unlinkReq({ cookie: session() }), d);
+    expect(d.logs).toEqual([unlinkAuditLine(NOW)]);
+    expect(d.logs[0]).toBe(`audit: ${new Date(NOW * 1000).toISOString()} account unlinked`);
+    // Nothing the server says or writes after an unlink carries the player's Discord identity.
+    const everything = JSON.stringify({ logs: d.logs, r });
+    for (const id of [ID, 'nelly', '8342729096ea3675442027381ff50dfe']) expect(everything).not.toContain(id);
+  });
+
+  it("doesn't call Discord (the shared app's authorization is left alone)", () => {
+    const discord = fakeDiscord();
+    unlink(unlinkReq({ cookie: session() }), deps({ fetch: discord.fetch }));
+    expect(discord.calls).toEqual([]);
+  });
+
+  it('needs a valid session, and writes no audit line without one', () => {
+    for (const c of [undefined, session({ exp: NOW }), `${SESSION_COOKIE}=forged.token.here`]) {
+      const d = deps();
+      const r = unlink(unlinkReq(c ? { cookie: c } : {}), d);
+      expect(r.status).toBe(401);
+      expect(r.cookies).toBeUndefined();
+      expect(d.logs).toEqual([]);
+    }
+  });
+
+  it("refuses requests from another site's pages", () => {
+    for (const origin of [undefined, 'https://evil.example']) {
+      const d = deps();
+      const headers: Record<string, string> = { cookie: session() };
+      if (origin) headers.origin = origin;
+      const r = unlink(req(`${CUSTOM}/api/auth/unlink`, headers), d);
+      expect(r.status).toBe(403);
+      expect(r.cookies).toBeUndefined();
+      expect(d.logs).toEqual([]);
     }
   });
 });

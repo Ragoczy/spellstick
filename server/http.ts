@@ -7,6 +7,7 @@ import {
   login,
   logout,
   me,
+  unlink,
   type AuthDeps,
   type AuthRequest,
   type AuthResponse,
@@ -14,8 +15,8 @@ import {
 } from './auth/auth.js';
 
 /**
- * The whole server: the built game from dist/ plus the Discord login routes. Game logic stays
- * in the browser; this only serves files and signs people in.
+ * The whole server: the built game from dist/ plus the Discord login routes (log in, log out,
+ * unlink). Game logic stays in the browser; this only serves files and signs people in.
  */
 
 export interface ServerOptions {
@@ -143,6 +144,7 @@ const AUTH_ROUTES: Record<
   '/api/auth/callback': { method: 'GET', run: callback },
   '/api/auth/me': { method: 'GET', run: me },
   '/api/auth/logout': { method: 'POST', run: (req) => logout(req) },
+  '/api/auth/unlink': { method: 'POST', run: unlink },
 };
 
 export function createHandler(opts: ServerOptions): Handler {

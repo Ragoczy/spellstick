@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-10-10',
+    title: 'Settings: report a problem, or unlink your account',
+    items: [
+      'Report a problem from Settings or the link at the bottom of this screen. It opens an email to the Darkspace admins.',
+      'Settings → Unlink my Discord account deletes your Spellstick data and logs you out. Your Discord account is not touched.',
+    ],
+  },
+  {
+    date: '2026-10-10',
     title: 'A new home, and Discord login',
     items: [
       'Spellstick now lives at spellstick.games.darkspace.press.',

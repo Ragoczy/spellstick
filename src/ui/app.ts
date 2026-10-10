@@ -5,17 +5,21 @@ import { makeConfig, type Difficulty, type MatchState, type SimEvent } from '../
 import { clipId } from '../content/announcer';
 import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
-import { LOGIN_URL, checkSession, logOut, takeLoginMessage, type AuthState } from './auth';
+import { LOGIN_URL, checkSession, logOut, takeLoginMessage, unlinkAccount, type AuthState } from './auth';
 import { Sfx, type SoundName } from './audio';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
 import { PadMenus } from './padMenus';
+import { reportMailto } from './report';
 import { AnnouncerVoice } from './voice';
 import {
   controlsScreen,
   pauseScreen,
+  reportScreen,
   resultsScreen,
+  settingsScreen,
   teamSelectScreen,
   titleScreen,
+  unlinkScreen,
   type TeamSelection,
 } from './screens';
 
@@ -145,9 +149,54 @@ export class App {
               this.click(() => this.showTitle()),
             ),
           ),
+          settings: this.click(() => this.showSettings()),
+          report: this.click(() => this.showReport(() => this.showTitle())),
         },
         this.auth,
       ),
+    );
+  }
+
+  private showSettings(): void {
+    const back = this.click(() => this.showTitle());
+    this.show(
+      settingsScreen(this.auth, {
+        report: this.click(() => this.showReport(() => this.showSettings())),
+        unlink: this.click(() => this.showUnlink()),
+        back,
+      }),
+      back,
+    );
+  }
+
+  /** Report a problem; `back` returns to wherever it was opened from. */
+  private showReport(back: () => void): void {
+    const reporter = this.auth.status === 'in' ? this.auth.user : null;
+    this.show(
+      reportScreen(reporter, {
+        send: (category) => {
+          this.sfx.play('click');
+          window.location.href = reportMailto(category, reporter);
+        },
+        back: this.click(back),
+      }),
+      this.click(back),
+    );
+  }
+
+  private showUnlink(): void {
+    const cancel = this.click(() => this.showSettings());
+    this.show(
+      unlinkScreen({
+        confirm: async () => {
+          if (!(await unlinkAccount())) return false;
+          // A fresh load: nothing of the old session or settings stays in memory.
+          window.location.assign('/?login=unlinked');
+          return true;
+        },
+        cancel,
+      }),
+      cancel,
     );
   }
 

@@ -5,6 +5,7 @@ import type { Difficulty } from '../sim';
 import type { AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import type { TeamTally } from './matchStats';
+import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
 
 /** Tiny DOM helper: element with attributes and children. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -37,6 +38,8 @@ function screen(id: string, ...content: (Node | string)[]): HTMLElement {
 export interface TitleActions {
   play(): void;
   controls(): void;
+  settings(): void;
+  report(): void;
   login(): void;
   logout(): void;
 }
@@ -54,12 +57,17 @@ export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
     el('h1', { class: 'title-logo' }, 'SPELLSTICK'),
     el('p', { class: 'tagline' }, 'Full-contact magical box lacrosse. Witches, sticks, and spells.'),
     accountLine(auth, a.logout),
-    el('div', { class: 'stack' }, main, button('Controls', a.controls)),
+    el('div', { class: 'stack' }, main, button('Controls', a.controls), button('Settings', a.settings)),
     whatsNew(CHANGELOG.slice(0, TITLE_CHANGELOG_ENTRIES)),
     el(
-      'p',
-      { class: 'credit' },
-      "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game.",
+      'footer',
+      { class: 'site-footer' },
+      el(
+        'p',
+        { class: 'credit' },
+        "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game.",
+      ),
+      button('Report a problem', a.report, 'link-btn'),
     ),
   );
 }
@@ -98,6 +106,135 @@ function accountLine(auth: AuthState, logout: () => void): HTMLElement {
     return el('div', { class: 'account' }, el('p', { class: 'login-note' }, 'Dev server: login skipped.'));
   }
   return el('div', { class: 'account' });
+}
+
+/** Settings: help (Report a problem) and, when logged in, "Unlink my Discord account" at the bottom. */
+export function settingsScreen(
+  auth: AuthState,
+  a: { report(): void; unlink(): void; back(): void },
+): HTMLElement {
+  const account =
+    auth.status === 'in'
+      ? [
+          el(
+            'section',
+            { class: 'danger-zone', 'aria-label': 'Discord account' },
+            el('h3', {}, 'Discord account'),
+            el('p', { class: 'settings-note' }, `Logged in as ${auth.user.username}.`),
+            button('Unlink my Discord account', a.unlink, 'btn danger'),
+          ),
+        ]
+      : [];
+  return screen(
+    'settings',
+    el('h2', {}, 'Settings'),
+    el('h3', {}, 'Help'),
+    el(
+      'p',
+      { class: 'settings-note' },
+      `To report a problem or request help with your data, contact ${REPORT_EMAIL}.`,
+    ),
+    el(
+      'div',
+      { class: 'stack' },
+      button('Report a problem', a.report),
+      button('Back', a.back, 'btn primary'),
+    ),
+    ...account,
+  );
+}
+
+/** Report a problem: pick a category, and the player's email app opens with a prefilled message. */
+export function reportScreen(
+  reporter: Reporter | null,
+  a: { send(category: ReportCategory): void; back(): void },
+): HTMLElement {
+  const included = reporter
+    ? `So we can act on it, the email includes your player name (${reporter.username}) and Discord user ID (${reporter.id}).`
+    : "You're not logged in. If it's about your account, add your Discord username to the email.";
+  return screen(
+    'report',
+    el('h2', {}, 'Report a problem'),
+    el(
+      'p',
+      { class: 'settings-note' },
+      `Pick what it's about. Your email app opens a message to ${REPORT_EMAIL}; add the details and send it.`,
+    ),
+    el('p', { class: 'settings-note' }, included),
+    el(
+      'div',
+      { class: 'stack' },
+      ...REPORT_CATEGORIES.map((c) => button(c, () => a.send(c))),
+      button('Back', a.back, 'btn primary'),
+    ),
+  );
+}
+
+/** The word typed to confirm an unlink. */
+export const UNLINK_CONFIRM_WORD = 'UNLINK';
+
+/**
+ * "Unlink your Discord account from Spellstick?": the button stays disabled until UNLINK is typed.
+ * `confirm` resolves false if the server didn't confirm (the screen says so and stays put).
+ */
+export function unlinkScreen(a: { confirm(): Promise<boolean>; cancel(): void }): HTMLElement {
+  const input = el('input', {
+    id: 'unlink-confirm',
+    type: 'text',
+    autocomplete: 'off',
+    autocapitalize: 'characters',
+    spellcheck: 'false',
+  });
+  const error = el('p', { class: 'login-note', role: 'alert' });
+  const go = el(
+    'button',
+    { class: 'btn danger', type: 'button', disabled: '' },
+    'Unlink and delete my game data',
+  );
+  const ready = () => input.value.trim().toUpperCase() === UNLINK_CONFIRM_WORD;
+  input.addEventListener('input', () => (go.disabled = !ready()));
+  go.addEventListener('click', () => {
+    if (!ready()) return;
+    go.disabled = true;
+    input.disabled = true;
+    error.textContent = '';
+    void a.confirm().then((ok) => {
+      if (ok) return;
+      error.textContent = "Couldn't unlink right now. Nothing was deleted. Try again in a moment.";
+      input.disabled = false;
+      go.disabled = !ready();
+    });
+  });
+  const node = screen(
+    'unlink',
+    el('h2', { id: 'unlink-title' }, 'Unlink your Discord account from Spellstick?'),
+    el(
+      'p',
+      {},
+      'This removes your Spellstick game data and disconnects the game from your Discord account. It only affects this game. Your Discord account, your messages, your server membership, and your roles are not changed in any way.',
+    ),
+    el('p', {}, 'You will lose:'),
+    el(
+      'ul',
+      { class: 'lose-list' },
+      el('li', {}, 'your login to Spellstick on this device'),
+      el('li', {}, 'your saved team, opponent, difficulty, and sound setting in this browser'),
+    ),
+    el(
+      'p',
+      { class: 'settings-note' },
+      "That's everything: Spellstick keeps no stats, match history, or profile on its server, and never kept your Discord login token. If you're logged in on another device, log out there too.",
+    ),
+    el('p', {}, "This can't be undone. You can play again later by reconnecting, but you'll start fresh."),
+    el('label', { for: 'unlink-confirm', class: 'confirm-label' }, `Type ${UNLINK_CONFIRM_WORD} to confirm`),
+    input,
+    error,
+    el('div', { class: 'row' }, button('Cancel', a.cancel, 'btn primary'), go),
+  );
+  node.setAttribute('role', 'alertdialog');
+  node.setAttribute('aria-modal', 'true');
+  node.setAttribute('aria-labelledby', 'unlink-title');
+  return node;
 }
 
 /** How many of the latest changelog entries the title screen shows. */

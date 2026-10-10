@@ -1,12 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-/** What the session cookie carries: the Discord user id, username, and avatar hash. */
+/** What the session cookie carries: the Discord user id, username, avatar hash, and access role. */
 export interface SessionClaims {
   /** Discord user id. */
   sub: string;
   username: string;
   /** Discord avatar hash, or null for a default avatar. */
   avatar: string | null;
+  /** From the access rule at sign-in: player, moderator, or admin. */
+  role: string;
   /** Issued at, seconds since the epoch. */
   iat: number;
   /** Expires at, seconds since the epoch. */
@@ -37,8 +39,16 @@ export function verifyJwt(token: string, secret: string, nowSeconds: number): Se
     const c = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Partial<SessionClaims>;
     if (typeof c.sub !== 'string' || typeof c.username !== 'string') return null;
     if (c.avatar !== null && typeof c.avatar !== 'string') return null;
+    if (typeof c.role !== 'string') return null;
     if (typeof c.exp !== 'number' || c.exp <= nowSeconds) return null;
-    return { sub: c.sub, username: c.username, avatar: c.avatar, iat: Number(c.iat) || 0, exp: c.exp };
+    return {
+      sub: c.sub,
+      username: c.username,
+      avatar: c.avatar,
+      role: c.role,
+      iat: Number(c.iat) || 0,
+      exp: c.exp,
+    };
   } catch {
     return null;
   }

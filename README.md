@@ -2,7 +2,7 @@
 
 A fast, top-down, arcade box-lacrosse game for the browser, set in Daniel Kensington's _Warlock_ series (Darkspace Press). Witches, sticks, legal violence, and golden-orange magic.
 
-**Play:** https://spellstick.games.darkspace.press (log in with Discord)
+**Play:** https://spellstick.games.darkspace.press (log in with Discord; open to Players in the Darkspace Discord server)
 
 Pick your team, an opponent, and a difficulty, then play a full match: four 2:30 periods, faceoffs, a 30-second shot clock, the crease rule, sudden-death overtime, body checks, and three spells.
 
@@ -36,13 +36,15 @@ npm run announcer:voice    # generate missing announcer clips with ElevenLabs (k
 npm run dev:swa      # built game + Discord login API at http://localhost:4280 (needs .env, see below)
 ```
 
-`npm run dev` skips the login (there's no auth API behind the Vite dev server). To try the real login locally, copy `.env.example` to `.env` (git-ignored), fill in the Discord app's client id and secret and a `SESSION_SECRET` (`openssl rand -base64 48`), add `http://localhost:4280/api/auth/callback` as a redirect in the Discord Developer Portal, and run `npm run dev:swa`. The first run downloads the Static Web Apps CLI, Azure Functions Core Tools, and (on Node newer than 22) a Node 22 for the Functions worker.
+`npm run dev` skips the login (there's no auth API behind the Vite dev server). To try the real login locally, run `tools/sync-discord-settings.sh local` (writes the git-ignored `.env` from Key Vault without showing it; needs `az login`), make sure `http://localhost:4280/api/auth/callback` is a redirect on the Darkspace Games Discord app, and run `npm run dev:swa`. The first run downloads the Static Web Apps CLI, Azure Functions Core Tools, and (on Node newer than 22) a Node 22 for the Functions worker.
 
 ## Hosting and login
 
 Azure Static Web Apps (Free), `swa-spellstick` in `rg-game-spellstick` (eastus2), defined in `infra/main.bicep`. GitHub Actions tests every push and deploys `main` (the built `dist/` plus the functions in `api/`) with the `AZURE_STATIC_WEB_APPS_API_TOKEN` repo secret. `public/staticwebapp.config.json` sets the SPA fallback and caching (hashed `/assets/*` immutable, everything else no-cache).
 
-Login is Discord OAuth2 (scope `identify`), shared by all Darkspace games: `/api/auth/login`, `/api/auth/callback`, `/api/auth/me`, `/api/auth/logout`. The session is a 30-day HS256 JWT in the `dsg_session` cookie (HttpOnly, Secure, SameSite=Lax; `Domain=.games.darkspace.press` on that domain, host-only elsewhere). Secrets are app settings only: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `SESSION_SECRET`.
+Login uses the shared Darkspace Games Discord app and access rule (the contract is `docs/darkspace-discord-signin.md` in the card game repo): scopes `identify guilds.members.read`; only members of the Darkspace Discord server with the Players, Mods, or Admins role (or an emergency admin) get in, and roles are re-read at every sign-in. Routes: `/api/auth/login`, `/api/auth/callback`, `/api/auth/me`, `/api/auth/logout`. The session is a 30-day HS256 JWT (Discord id, username, avatar, role) in the `dsg_session` cookie (HttpOnly, Secure, SameSite=Lax; `Domain=.games.darkspace.press` on that domain, host-only elsewhere). Nothing is stored server-side.
+
+Settings are app settings only. The shared ones (`DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_GUILD_ID`, `DISCORD_PLAYER_ROLE_IDS`, `DISCORD_MODERATOR_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS`, `ADMIN_DISCORD_IDS`) are copied from Key Vault `kv-ha7siia4h4zia` by `tools/sync-discord-settings.sh azure`; rerun it when a shared value changes. `SESSION_SECRET` is Spellstick's own; `GAME_ALLOWED_ROLE_IDS` is an optional Spellstick-only override of the Players roles.
 
 ## Announcer voice
 

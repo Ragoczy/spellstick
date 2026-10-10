@@ -15,7 +15,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: 'A new home, and Discord login',
     items: [
       'Spellstick now lives at spellstick.games.darkspace.press.',
-      'Log in with your Discord account to play. The game only sees your Discord name and avatar.',
+      "Log in with Discord to play. It's open to Players in the Darkspace Discord server.",
+      'The game only sees your Discord name, avatar, and Darkspace server roles.',
     ],
   },
   {

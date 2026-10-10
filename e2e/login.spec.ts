@@ -13,7 +13,9 @@ test('logged out: no Play, and the login button goes to the auth API', async ({ 
   await expect(login).toBeVisible();
   await expect(login).toBeFocused();
   await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0);
-  await expect(page.locator('.login-note')).toHaveText('Log in with your Discord account to play.');
+  await expect(page.locator('.login-note')).toHaveText(
+    'Log in with Discord to play. Open to Players in the Darkspace Discord server.',
+  );
   await expect(page.locator('.login-note')).toBeVisible();
   await page.screenshot({ path: 'test-results/title-logged-out.png' });
   await login.click();
@@ -27,6 +29,17 @@ test('a failed login says so and tidies the address bar', async ({ page }) => {
   await page.goto('./?login=failed');
   await expect(page.getByRole('alert')).toHaveText("Discord login didn't work. Try again.");
   await expect(page).toHaveURL(/\/$/);
+});
+
+test('refused sign-ins explain why', async ({ page }) => {
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ status: 401, json: { error: 'unauthenticated' } }),
+  );
+  await page.goto('./?login=not-member');
+  await expect(page.getByRole('alert')).toContainText('members of the Darkspace Discord server');
+  await page.goto('./?login=no-role');
+  await expect(page.getByRole('alert')).toContainText("doesn't have the Players role");
+  await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0);
 });
 
 test('no auth API in a production build: still locked, with a message', async ({ page }) => {

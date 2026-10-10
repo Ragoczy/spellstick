@@ -1,10 +1,12 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { ACCESS_ROLES, accessSettings, checkAccess, type AccessRole } from './access';
 import { signJwt, verifyJwt } from './jwt';
 
 /**
- * Discord login (OAuth2 authorization code flow, scope "identify"), shared by every
- * Darkspace game. Kept free of the Functions runtime so it can be unit tested; the
- * registrations live in src/functions/auth.ts.
+ * Discord login (OAuth2 authorization code flow, scopes "identify guilds.members.read"),
+ * with the shared Darkspace Games access rule (Darkspace Discord server roles; see access.ts).
+ * Kept free of the Functions runtime so it can be unit tested; the registrations live in
+ * src/functions/auth.ts.
  */
 
 export const SESSION_COOKIE = 'dsg_session';
@@ -18,6 +20,7 @@ export const SHARED_COOKIE_PARENT = 'games.darkspace.press';
 const DISCORD_AUTHORIZE = 'https://discord.com/oauth2/authorize';
 const DISCORD_API = 'https://discord.com/api/v10';
 const DISCORD_TIMEOUT_MS = 10_000;
+const DISCORD_SCOPES = 'identify guilds.members.read';
 
 /** The parts of an HTTP request the handlers read (a subset of @azure/functions' HttpRequest). */
 export interface AuthRequest {
@@ -59,6 +62,7 @@ export interface MeBody {
   username: string;
   avatar: string | null;
   avatarUrl: string;
+  role: AccessRole;
 }
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -160,9 +164,11 @@ export function login(req: AuthRequest, deps: AuthDeps): AuthResponse {
   url.search = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
-    scope: 'identify',
+    scope: DISCORD_SCOPES,
     state,
     redirect_uri: callbackUrl(requestOrigin(req)),
+    // Skips Discord's approval screen for people who already approved the app.
+    prompt: 'none',
   }).toString();
   return redirect(url.toString(), [stateCookie(state, STATE_SECONDS)]);
 }
@@ -170,7 +176,10 @@ export function login(req: AuthRequest, deps: AuthDeps): AuthResponse {
 const ID_RE = /^\d{1,25}$/;
 const AVATAR_RE = /^(a_)?[0-9a-f]{1,64}$/;
 
-/** GET /api/auth/callback: check state, trade the code for a token, look up the user, set the session. */
+/**
+ * GET /api/auth/callback: check state, trade the code for a token, look up the user and their
+ * Darkspace server roles, apply the access rule, set the session. Discord's token is discarded.
+ */
 export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthResponse> {
   const {
     DISCORD_CLIENT_ID: clientId,
@@ -180,6 +189,8 @@ export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthRe
   if (!clientId) return notConfigured(deps, 'DISCORD_CLIENT_ID');
   if (!clientSecret) return notConfigured(deps, 'DISCORD_CLIENT_SECRET');
   if (!secret) return notConfigured(deps, 'SESSION_SECRET');
+  const settings = accessSettings(deps.env);
+  if (!settings) return notConfigured(deps, 'DISCORD_GUILD_ID');
 
   const clearState = stateCookie('', 0);
   const fail = (why: string) => {
@@ -202,13 +213,15 @@ export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthRe
   try {
     const res = await deps.fetch(`${DISCORD_API}/oauth2/token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
         redirect_uri: callbackUrl(origin),
-        client_id: clientId,
-        client_secret: clientSecret,
       }),
       signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
@@ -237,9 +250,37 @@ export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthRe
     return fail(`users/@me error: ${(e as Error).name}`);
   }
 
+  // Roles in the Darkspace server; a 404 means "not in the server".
+  let memberRoles: string[] | null;
+  try {
+    const res = await deps.fetch(`${DISCORD_API}/users/@me/guilds/${settings.guildId}/member`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
+    });
+    if (res.status === 404) memberRoles = null;
+    else if (!res.ok) return fail(`guild member lookup returned ${res.status}`);
+    else {
+      const m = (await res.json()) as { roles?: unknown };
+      if (!Array.isArray(m.roles)) return fail('guild member lookup returned an unexpected shape');
+      memberRoles = m.roles.filter((r): r is string => typeof r === 'string');
+    }
+  } catch (e) {
+    return fail(`guild member lookup error: ${(e as Error).name}`);
+  }
+
+  const access = checkAccess(user.id, memberRoles, settings);
+  if (!access.allowed) return redirect(`/?login=${access.reason}`, [clearState]);
+
   const now = deps.nowSeconds();
   const token = signJwt(
-    { sub: user.id, username: user.username, avatar: user.avatar, iat: now, exp: now + SESSION_SECONDS },
+    {
+      sub: user.id,
+      username: user.username,
+      avatar: user.avatar,
+      role: access.role,
+      iat: now,
+      exp: now + SESSION_SECONDS,
+    },
     secret,
   );
   return redirect('/', [clearState, sessionCookie(origin, token, SESSION_SECONDS)]);
@@ -251,7 +292,7 @@ export function me(req: AuthRequest, deps: AuthDeps): AuthResponse {
   if (!secret) return notConfigured(deps, 'SESSION_SECRET');
   const token = parseCookies(req.headers.get('cookie')).get(SESSION_COOKIE);
   const claims = token ? verifyJwt(token, secret, deps.nowSeconds()) : null;
-  if (!claims || !ID_RE.test(claims.sub)) {
+  if (!claims || !ID_RE.test(claims.sub) || !ACCESS_ROLES.includes(claims.role as AccessRole)) {
     return { status: 401, headers: NO_STORE, jsonBody: { error: 'unauthenticated' } };
   }
   const avatar = claims.avatar && AVATAR_RE.test(claims.avatar) ? claims.avatar : null;
@@ -260,11 +301,18 @@ export function me(req: AuthRequest, deps: AuthDeps): AuthResponse {
     username: claims.username,
     avatar,
     avatarUrl: avatarUrl(claims.sub, avatar),
+    role: claims.role as AccessRole,
   };
   return { status: 200, headers: NO_STORE, jsonBody: body };
 }
 
+/** Non-GET requests must come from this site's own pages (the browser's Origin header). */
+export function sameOrigin(req: AuthRequest): boolean {
+  return req.headers.get('origin') === requestOrigin(req);
+}
+
 /** POST /api/auth/logout: clear the session cookie. */
 export function logout(req: AuthRequest): AuthResponse {
+  if (!sameOrigin(req)) return { status: 403, headers: NO_STORE, jsonBody: { error: 'bad_origin' } };
   return { status: 204, headers: NO_STORE, cookies: [sessionCookie(requestOrigin(req), '', 0)] };
 }

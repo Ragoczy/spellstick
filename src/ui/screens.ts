@@ -90,7 +90,7 @@ function accountLine(auth: AuthState, logout: () => void): HTMLElement {
       el(
         'p',
         { class: 'login-note', role: auth.message ? 'alert' : 'note' },
-        auth.message ?? 'Log in with your Discord account to play.',
+        auth.message ?? 'Log in with Discord to play. Open to Players in the Darkspace Discord server.',
       ),
     );
   }

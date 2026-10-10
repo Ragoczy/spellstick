@@ -1,12 +1,15 @@
 /**
- * Discord login (the auth API lives in /api). Logging in is required to play; the title
- * screen shows the login button until /api/auth/me says who you are.
+ * Discord login (the auth API lives in /api). Logging in is required to play, and only
+ * Players (or Mods/Admins) of the Darkspace Discord server get in; the title screen shows
+ * the login button until /api/auth/me says who you are.
  */
 
 export interface DiscordUser {
   id: string;
   username: string;
   avatarUrl: string;
+  /** From the Darkspace server roles at sign-in. */
+  role: string;
 }
 
 export type AuthState =
@@ -23,6 +26,10 @@ const LOGOUT_URL = '/api/auth/logout';
 export const LOGIN_MESSAGES: Record<string, string> = {
   failed: "Discord login didn't work. Try again.",
   cancelled: 'Login cancelled.',
+  'not-member':
+    'Spellstick is for members of the Darkspace Discord server. Join the server, then log in again.',
+  'no-role':
+    "Your Darkspace Discord account doesn't have the Players role yet. Ask a mod for it, then log in again.",
   unavailable: "Can't reach the login server right now. Try again in a moment.",
 };
 
@@ -35,10 +42,16 @@ export function parseMe(
   if (status === 401) return 'out';
   if (status !== 200 || !contentType?.includes('application/json')) return null;
   const u = body as Partial<DiscordUser> | null;
-  if (!u || typeof u.id !== 'string' || typeof u.username !== 'string' || typeof u.avatarUrl !== 'string') {
+  if (
+    !u ||
+    typeof u.id !== 'string' ||
+    typeof u.username !== 'string' ||
+    typeof u.avatarUrl !== 'string' ||
+    typeof u.role !== 'string'
+  ) {
     return null;
   }
-  return { id: u.id, username: u.username, avatarUrl: u.avatarUrl };
+  return { id: u.id, username: u.username, avatarUrl: u.avatarUrl, role: u.role };
 }
 
 export async function checkSession(dev: boolean): Promise<AuthState> {

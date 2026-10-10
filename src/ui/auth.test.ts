@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { parseMe } from './auth';
 
 describe('Discord login: reading /api/auth/me', () => {
-  const user = { id: '80351110224678912', username: 'nelly', avatarUrl: 'https://cdn.discordapp.com/x.png' };
+  const user = {
+    id: '80351110224678912',
+    username: 'nelly',
+    avatarUrl: 'https://cdn.discordapp.com/x.png',
+    role: 'player',
+  };
 
   it('a 200 with a user is logged in; a 401 is logged out', () => {
     expect(parseMe(200, 'application/json; charset=utf-8', { ...user, avatar: null })).toEqual(user);

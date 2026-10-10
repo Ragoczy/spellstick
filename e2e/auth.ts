@@ -4,6 +4,7 @@ export const TEST_USER = {
   id: '80351110224678912',
   username: 'test-witch',
   avatar: null,
+  role: 'player',
   // A data URL so the test never reaches Discord's CDN.
   avatarUrl:
     'data:image/svg+xml,' +

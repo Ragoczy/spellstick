@@ -15,12 +15,12 @@ const SWA_CLI = '@azure/static-web-apps-cli@2.0.10';
 const CORE_TOOLS = 'azure-functions-core-tools@4.15.2';
 const FUNCTIONS_NODE = '22';
 const API_PORT = 7071;
-const REQUIRED = ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'SESSION_SECRET'];
+const REQUIRED = ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_GUILD_ID', 'SESSION_SECRET'];
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const missing = REQUIRED.filter((k) => !process.env[k]);
 if (missing.length > 0) {
-  console.error(`Missing ${missing.join(', ')}. Copy .env.example to .env and fill it in.`);
+  console.error(`Missing ${missing.join(', ')}. Run tools/sync-discord-settings.sh local to write .env.`);
   process.exit(1);
 }
 

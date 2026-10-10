@@ -28,6 +28,7 @@ npm run sim -- --games 300 --home-level normal --away-level hard   # compare dif
 npm run build        # production build to dist/
 npm run test:e2e     # Playwright: plays through the menus and a match against the built game
 npm run announcer:script   # regenerate docs/ANNOUNCER_SCRIPT.md after editing announcer lines
+npm run announcer:voice    # generate missing announcer clips with ElevenLabs (key in .env.local)
 ```
 
 ## Announcer voice

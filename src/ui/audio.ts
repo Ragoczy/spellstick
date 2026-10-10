@@ -6,6 +6,8 @@
  * Also plays recorded announcer clips on their own voice bus; effects duck under the
  * voice so the call is easy to hear. One mute covers everything.
  */
+import type { ClipShape } from './voice';
+
 export type SoundName = 'hit' | 'pass' | 'shot' | 'goal' | 'whistle' | 'spell' | 'click';
 
 const MUTE_KEY = 'spellstick.muted';
@@ -68,15 +70,18 @@ export class Sfx {
   }
 
   /**
-   * Plays a decoded announcer clip on the voice bus, ducking the effects until it ends.
-   * Returns a function that stops it early, or null if audio isn't available.
+   * Plays a decoded announcer clip on the voice bus (trimmed and leveled per `shape`),
+   * ducking the effects until it ends. Returns a function that stops it early, or null if
+   * audio isn't available.
    */
-  playVoice(buffer: AudioBuffer, onEnded: () => void): (() => void) | null {
+  playVoice(buffer: AudioBuffer, shape: ClipShape, onEnded: () => void): (() => void) | null {
     const ctx = this.ctx;
     if (!ctx || !this.voiceBus || !this.sfxBus) return null;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(this.voiceBus);
+    const level = ctx.createGain();
+    level.gain.value = shape.gain;
+    src.connect(level).connect(this.voiceBus);
     const duck = this.sfxBus.gain;
     const now = ctx.currentTime;
     duck.cancelScheduledValues(now);
@@ -87,7 +92,7 @@ export class Sfx {
       duck.setTargetAtTime(1, ctx.currentTime, DUCK_RELEASE / 3);
       if (!stopped) onEnded();
     };
-    src.start(now);
+    src.start(now, shape.offset, shape.duration);
     return () => {
       stopped = true;
       try {

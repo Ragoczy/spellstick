@@ -59,6 +59,11 @@ Paul's call: recorded clips only (no browser text-to-speech). The game stays tex
 - [x] Speak the same line the text shows; a more important call cuts off a less important one; effects duck under the voice; the M mute covers it.
 - [x] Generate a recording script (`docs/ANNOUNCER_SCRIPT.md`) from the line list, with situations, delivery notes, and file specs; a test keeps it in sync and catches mis-named clip files.
 - **Done when:** dropping a correctly named clip into the folder makes that line speak in the deployed game with no code changes, and the game behaves exactly as before with no clips.
+- From Paul (2026-10-10): generate the recordings with ElevenLabs, voice `hA4zGnmTwX2NQiTRMt7o`.
+  - [x] Generator script (`npm run announcer:voice`) with the key in a git-ignored `.env.local`.
+  - [x] Generate all 28 lines; measure them; regenerate any bad take.
+  - [x] Trim silence and level loudness at load time so uneven takes play cleanly.
+  - [ ] Paul listens and flags any lines to redo.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

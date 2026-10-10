@@ -61,6 +61,7 @@ export class App {
         spoken: this.voice.spoken,
         speak: (id: string) => this.voice.speak(id, 99),
         preload: () => this.voice.preload(),
+        shape: (id: string) => this.voice.shapeOf(id),
       },
     };
   }

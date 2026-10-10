@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AnnouncerVoice, type VoiceOutput } from './voice';
+import { analyzeClip, AnnouncerVoice, type VoiceOutput } from './voice';
 
 /** A fake audio output that records what played and lets the test end clips. */
 function fakeOutput(muted = false) {
@@ -7,8 +7,14 @@ function fakeOutput(muted = false) {
   let n = 0;
   const out: VoiceOutput & { playing: typeof playing } = {
     isMuted: muted,
-    context: { decodeAudioData: async (data) => ({ data }) as unknown as AudioBuffer },
-    playVoice: (_buffer, onEnded) => {
+    context: {
+      decodeAudioData: async () =>
+        ({
+          sampleRate: 1000,
+          getChannelData: () => tone(1000, 0.2, 0.5, 0.3, 0.2),
+        }) as unknown as AudioBuffer,
+    },
+    playVoice: (_buffer, _shape, onEnded) => {
       const entry = { id: n++, ended: onEnded, stopped: false };
       playing.push(entry);
       return () => {
@@ -17,6 +23,15 @@ function fakeOutput(muted = false) {
     },
     playing,
   };
+  return out;
+}
+
+/** `lead` s of silence, `speech` s of a tone at amplitude `amp`, then `tail` s of silence. */
+function tone(rate: number, lead: number, speech: number, amp: number, tail: number): Float32Array {
+  const out = new Float32Array(Math.round(rate * (lead + speech + tail)));
+  const start = Math.round(rate * lead);
+  const end = start + Math.round(rate * speech);
+  for (let i = start; i < end; i++) out[i] = amp * Math.sin((2 * Math.PI * 50 * i) / rate);
   return out;
 }
 
@@ -86,5 +101,39 @@ describe('announcer voice', () => {
     await voice.preload();
     expect(voice.recordedIds).toEqual([]);
     expect(voice.speak('goal-01', 4)).toBe(false);
+  });
+});
+
+describe('clip trimming and leveling', () => {
+  const rate = 8000;
+
+  it('skips the silence before the speech and stops shortly after it', () => {
+    const shape = analyzeClip(tone(rate, 1.3, 0.7, 0.3, 1.3), rate);
+    expect(shape.offset).toBeGreaterThan(1.2);
+    expect(shape.offset).toBeLessThan(1.31);
+    expect(shape.duration).toBeGreaterThan(0.7);
+    expect(shape.duration).toBeLessThan(0.85);
+  });
+
+  it('turns quiet clips up and loud clips down toward the same level', () => {
+    const quiet = analyzeClip(tone(rate, 0.1, 0.5, 0.12, 0.1), rate);
+    const loud = analyzeClip(tone(rate, 0.1, 0.5, 0.35, 0.1), rate);
+    expect(quiet.gain).toBeGreaterThan(1);
+    expect(loud.gain).toBeLessThan(1);
+    // Leveled speech comes out at about the same RMS.
+    const rms = (amp: number, gain: number) => (amp / Math.SQRT2) * gain;
+    expect(rms(0.12, quiet.gain)).toBeCloseTo(rms(0.35, loud.gain), 2);
+  });
+
+  it('never boosts a clip so much its peak would clip', () => {
+    // A spiky clip: low average level but one near-full-scale sample.
+    const s = tone(rate, 0.1, 0.5, 0.05, 0.1);
+    s[Math.round(rate * 0.3)] = 0.9;
+    const shape = analyzeClip(s, rate);
+    expect(s[Math.round(rate * 0.3)]! * shape.gain).toBeLessThanOrEqual(0.98 + 1e-6);
+  });
+
+  it('a silent file plays as-is', () => {
+    expect(analyzeClip(new Float32Array(rate), rate)).toEqual({ offset: 0, duration: 1, gain: 1 });
   });
 });

@@ -82,5 +82,11 @@ Paul's call: "merge the art, can we add controller support?"
 - **Done when:** with only a gamepad, Paul can go from the title screen through a match to the results and back, and the 8-bit look is what loads by default.
 - Paul signed off (2026-10-10): "keep it as is for now." Layout, aim assist, aim-where-you-run, and the 8-bit default stay as built.
 
+## Title-screen changelog (Paul, 2026-10-10)
+Paul's ask: "add a changelog to startup that shows the most recent updates."
+- [x] A "What's new" section on the title screen with the latest 3 updates (title, date, a few plain lines each), newest first.
+- [x] The entries live in `src/content/changelog.ts`; tests keep them dated, non-empty, and in order.
+- [x] It fits the title panel on desktop and phone widths, and the panel scrolls on short windows.
+
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

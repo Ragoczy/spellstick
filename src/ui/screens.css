@@ -46,6 +46,7 @@
   box-sizing: border-box;
 }
 /* The tall screens scroll inside the panel on short windows (a focused button scrolls into view on a pad). */
+#title .panel,
 #controls .panel,
 #team-select .panel {
   max-height: 100%;
@@ -54,7 +55,8 @@
 
 .title-logo {
   font-family: var(--serif);
-  font-size: clamp(48px, 10vw, 96px);
+  /* Sized to fit inside the panel (viewport minus its padding and borders). */
+  font-size: clamp(32px, calc((100vw - 92px) * 0.125), 84px);
   color: var(--gold);
   text-shadow:
     0 0 18px rgba(255, 166, 48, 0.55),
@@ -74,6 +76,40 @@
   color: var(--ink-dim);
   font-size: 12px;
   margin-top: 22px;
+}
+
+/* "What's new" on the title screen. */
+.whats-new {
+  margin-top: 26px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(242, 239, 230, 0.12);
+}
+.whats-new h3 {
+  margin-top: 14px;
+}
+.change + .change {
+  margin-top: 10px;
+}
+.change-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--gold);
+}
+.change-head time {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.change ul {
+  margin: 3px 0 0;
+  padding-left: 18px;
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 h2 {

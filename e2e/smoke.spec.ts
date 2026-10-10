@@ -95,6 +95,7 @@ test('a new player: title, team select, controls, a match, pause, results, back 
     () => (window as unknown as { __spellstick?: unknown }).__spellstick !== undefined,
   );
   expect((await debug(page)).setup.mode).toBe('demo'); // AI vs AI behind the title
+  await expect(page.getByRole('region', { name: "What's new" }).locator('.change')).toHaveCount(3);
 
   // Title → team select: pick Hard, keep the default teams.
   await page.getByRole('button', { name: 'Play' }).click();

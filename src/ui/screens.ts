@@ -1,3 +1,4 @@
+import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/changelog';
 import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
 import type { Difficulty } from '../sim';
@@ -43,10 +44,36 @@ export function titleScreen(a: TitleActions): HTMLElement {
     el('h1', { class: 'title-logo' }, 'SPELLSTICK'),
     el('p', { class: 'tagline' }, 'Full-contact magical box lacrosse. Witches, sticks, and spells.'),
     el('div', { class: 'stack' }, button('Play', a.play, 'btn primary'), button('Controls', a.controls)),
+    whatsNew(CHANGELOG.slice(0, TITLE_CHANGELOG_ENTRIES)),
     el(
       'p',
       { class: 'credit' },
       "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game.",
+    ),
+  );
+}
+
+/** How many of the latest changelog entries the title screen shows. */
+export const TITLE_CHANGELOG_ENTRIES = 3;
+
+/** The "What's new" box on the title screen. */
+function whatsNew(entries: readonly ChangelogEntry[]): HTMLElement {
+  return el(
+    'section',
+    { class: 'whats-new', 'aria-label': "What's new" },
+    el('h3', {}, "What's new"),
+    ...entries.map((e) =>
+      el(
+        'div',
+        { class: 'change' },
+        el(
+          'p',
+          { class: 'change-head' },
+          el('strong', {}, e.title),
+          el('time', { datetime: e.date }, changelogDate(e.date)),
+        ),
+        el('ul', {}, ...e.items.map((i) => el('li', {}, i))),
+      ),
     ),
   );
 }

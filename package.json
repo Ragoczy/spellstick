@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "sim": "tsx tools/sim.ts",
-    "announcer:script": "tsx tools/announcerScript.ts"
+    "announcer:script": "tsx tools/announcerScript.ts",
+    "announcer:voice": "tsx tools/generateVoice.ts"
   },
   "dependencies": {
     "phaser": "^3.90.0"

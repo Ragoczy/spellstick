@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   SESSION_COOKIE,
+  activityOrigin,
+  activitySignIn,
   STATE_COOKIE,
   avatarUrl,
   callback,
@@ -391,5 +393,117 @@ describe('POST /api/auth/unlink ("Unlink my Discord account")', () => {
       expect(r.cookies).toBeUndefined();
       expect(d.logs).toEqual([]);
     }
+  });
+});
+
+describe('POST /api/discord/signin (inside Discord, as an Activity)', () => {
+  const ACTIVITY = 'https://1234.discordsays.com';
+  const signIn = (body: string | undefined, d = deps(), origin: string | null = ACTIVITY) =>
+    activitySignIn({ ...req(`${CUSTOM}/api/discord/signin`, origin ? { origin } : {}), body }, d);
+  const codeBody = JSON.stringify({ code: 'sdk-code' });
+
+  it("knows the Activity's address from the client id, and only from a real one", () => {
+    expect(activityOrigin('1234')).toBe(ACTIVITY);
+    expect(activityOrigin(undefined)).toBeNull();
+    expect(activityOrigin('evil.example/x')).toBeNull();
+  });
+
+  it('trades the code without a redirect_uri, checks roles, and sets a partitioned cookie for the frame', async () => {
+    const discord = fakeDiscord();
+    const d = deps({ fetch: discord.fetch });
+    const r = await signIn(codeBody, d);
+    expect(r.status).toBe(200);
+    expect(r.headers).toMatchObject({ 'Cache-Control': 'no-store' });
+    expect(r.jsonBody).toEqual({ access_token: 'discord-access', signedIn: true });
+
+    const [token, user, member] = discord.calls;
+    expect(Object.fromEntries(new URLSearchParams(String(token!.init!.body)))).toEqual({
+      grant_type: 'authorization_code',
+      code: 'sdk-code',
+    });
+    const basic = (token!.init!.headers as Record<string, string>).Authorization!;
+    expect(Buffer.from(basic.replace(/^Basic /, ''), 'base64').toString()).toBe('1234:client-secret');
+    expect(user!.url).toBe('https://discord.com/api/v10/users/@me');
+    expect(member!.url).toBe(MEMBER_URL);
+
+    const s = cookie(r, SESSION_COOKIE)!;
+    expect(s).toMatchObject({
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'None',
+      partitioned: true,
+      maxAge: 30 * 86400,
+    });
+    // Host-only: the browser keeps it for <client id>.discordsays.com, never .games.darkspace.press.
+    expect(s.domain).toBeUndefined();
+    expect(verifyJwt(s.value, SECRET, NOW)).toMatchObject({ sub: '80351110224678912', role: 'player' });
+    expect(d.logs).toEqual([]);
+  });
+
+  it('a refused player still gets the token (for the profile details), and any earlier session ends', async () => {
+    for (const [member, reason] of [
+      [new Response('{}', { status: 404 }), 'not-member'],
+      [Response.json({ roles: ['111'] }), 'no-role'],
+    ] as const) {
+      const r = await signIn(codeBody, deps({ fetch: fakeDiscord({ member }).fetch }));
+      expect(r.status).toBe(200);
+      expect(r.jsonBody).toEqual({ access_token: 'discord-access', signedIn: false, reason });
+      expect(cookie(r, SESSION_COOKIE)).toMatchObject({
+        value: '',
+        maxAge: 0,
+        sameSite: 'None',
+        partitioned: true,
+      });
+    }
+  });
+
+  it("keeps an earlier session when Discord has trouble after the exchange, and doesn't log the token", async () => {
+    const d = deps({ fetch: fakeDiscord({ member: new Response('busy', { status: 503 }) }).fetch });
+    const r = await signIn(codeBody, d);
+    expect(r.jsonBody).toEqual({ access_token: 'discord-access', signedIn: false, reason: 'failed' });
+    expect(r.cookies).toEqual([]);
+    expect(d.logs.join()).toContain('guild member lookup returned 503');
+    expect(d.logs.join()).not.toContain('discord-access');
+  });
+
+  it('is a 502 when Discord turns the code down, and logs neither the code nor the secret', async () => {
+    const d = deps({ fetch: fakeDiscord({ token: new Response('{}', { status: 400 }) }).fetch });
+    const r = await signIn(codeBody, d);
+    expect(r.status).toBe(502);
+    expect(r.cookies).toBeUndefined();
+    expect(d.logs.join()).toContain('token exchange returned 400');
+    expect(d.logs.join()).not.toMatch(/sdk-code|client-secret/);
+  });
+
+  it("refuses other pages, including the game's own browser page, without calling Discord", async () => {
+    for (const origin of [CUSTOM, 'https://999.discordsays.com', null]) {
+      const discord = fakeDiscord();
+      const r = await signIn(codeBody, deps({ fetch: discord.fetch }), origin);
+      expect(r.status).toBe(403);
+      expect(discord.calls).toHaveLength(0);
+    }
+  });
+
+  it('is a 400 for a missing or odd code, without calling Discord', async () => {
+    for (const body of [
+      undefined,
+      '',
+      'not json',
+      'null',
+      '{}',
+      '{"code":7}',
+      JSON.stringify({ code: 'x'.repeat(201) }),
+    ]) {
+      const discord = fakeDiscord();
+      const r = await signIn(body, deps({ fetch: discord.fetch }));
+      expect(r.status).toBe(400);
+      expect(discord.calls).toHaveLength(0);
+    }
+  });
+
+  it('is a 500 without its settings, rather than letting anyone in', async () => {
+    const r = await signIn(codeBody, deps({ env: { ...ENV, DISCORD_GUILD_ID: '' } }));
+    expect(r.status).toBe(500);
   });
 });

@@ -11,6 +11,8 @@ param deployPrincipalId string
 param keyVaultUrl string
 @description('Shared settings: { env: environment variable, secret: Key Vault secret name }.')
 param sharedSettings { env: string, secret: string }[]
+@description('This game\'s Discord app (its Application ID; not a secret).')
+param discordClientId string
 param gameAllowedRoleIds string
 param minReplicas int
 param customDomain string
@@ -67,6 +69,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           env: concat([
             { name: 'PORT', value: '8080' }
+            { name: 'DISCORD_CLIENT_ID', value: discordClientId }
             { name: 'GAME_ALLOWED_ROLE_IDS', value: gameAllowedRoleIds }
             { name: 'SESSION_SECRET', secretRef: 'session-secret' }
           ], sharedEnv)

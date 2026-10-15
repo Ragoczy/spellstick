@@ -28,7 +28,8 @@ beforeAll(async () => {
   server = createServer(
     createHandler({
       distDir: dir,
-      deps: { env: {}, fetch, nowSeconds: () => 0, log: (m) => logs.push(m) },
+      // Only the client id: enough to know the Activity's address, not to sign anyone in.
+      deps: { env: { DISCORD_CLIENT_ID: '1234' }, fetch, nowSeconds: () => 0, log: (m) => logs.push(m) },
     }),
   );
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -44,7 +45,7 @@ afterAll(() => {
 /** Raw HTTP so the path is sent exactly as written (fetch would tidy up ../ and such). */
 function get(
   path: string,
-  opts: { method?: string; headers?: Record<string, string> } = {},
+  opts: { method?: string; headers?: Record<string, string>; body?: string } = {},
 ): Promise<{ status: number; headers: IncomingHttpHeaders; body: Buffer }> {
   return new Promise((resolveP, reject) => {
     const req = request(
@@ -64,7 +65,7 @@ function get(
       },
     );
     req.on('error', reject);
-    req.end();
+    req.end(opts.body);
   });
 }
 
@@ -176,6 +177,27 @@ describe('routing and safety', () => {
     expect(r.status).toBe(500);
   });
 
+  it("routes POST /api/discord/signin from the Activity's own address only, and caps the body", async () => {
+    const activity = { origin: 'https://1234.discordsays.com' };
+    // Past the origin check; no secret in this test server, so it stops at the settings check.
+    const r = await get('/api/discord/signin', { method: 'POST', headers: activity, body: '{"code":"x"}' });
+    expect(r.status).toBe(500);
+    expect(
+      (
+        await get('/api/discord/signin', {
+          method: 'POST',
+          headers: { origin: 'https://999.discordsays.com' },
+        })
+      ).status,
+    ).toBe(403);
+    expect((await get('/api/discord/signin')).status).toBe(405);
+    const big = await get('/api/discord/signin', {
+      method: 'POST',
+      headers: activity,
+      body: 'x'.repeat(5000),
+    });
+    expect(big.status).toBe(413);
+  });
   it('uses https for the redirect when the ingress says the browser used it', async () => {
     const r = await get('/api/auth/me', {
       headers: { host: 'spellstick.games.darkspace.press', 'x-forwarded-proto': 'https' },
@@ -210,5 +232,20 @@ describe('helpers', () => {
     ).toBe(
       'dsg_session=a.b.c; Domain=.games.darkspace.press; Path=/; Max-Age=60; Secure; HttpOnly; SameSite=Lax',
     );
+  });
+
+  it('writes the partitioned cookie used inside Discord', () => {
+    expect(
+      serializeCookie({
+        name: 'dsg_session',
+        value: 'a.b.c',
+        path: '/',
+        maxAge: 60,
+        secure: true,
+        httpOnly: true,
+        sameSite: 'None',
+        partitioned: true,
+      }),
+    ).toBe('dsg_session=a.b.c; Path=/; Max-Age=60; Secure; HttpOnly; SameSite=None; Partitioned');
   });
 });

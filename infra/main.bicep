@@ -1,8 +1,8 @@
 // Spellstick (the box-lacrosse browser game): Azure setup.
 //
 // Same shared architecture as the Spellstick card game (Ragoczy/spellstick-cardgame): one
-// container app in aiuthor's Container Apps environment, reading the shared Darkspace Games
-// Discord settings straight from Key Vault, deployed by GitHub Actions with its own identity.
+// container app in aiuthor's Container Apps environment, reading its Discord settings straight
+// from Key Vault, deployed by GitHub Actions with its own identity.
 // Everything of ours lives in rg-game-spellstick; in rg-aiuthor we only add access grants.
 // The card game already uses the "spellstick" names, so this game's are "game-spellstick".
 //
@@ -30,6 +30,12 @@ param deployIdentityName string = 'id-game-spellstick-deploy'
 @description('GitHub repo as GitHub names it in sign-in tokens: owner@ownerId/repo@repoId. The IDs stop a renamed or re-created repo from inheriting access.')
 param githubRepo string = 'Ragoczy@2834782/spellstick@1407734666'
 
+@description('This game\'s own Discord app (Developer Portal > General Information > Application ID), used for login and the Discord Activity. Not a secret.')
+@minLength(1)
+param discordClientId string
+@description('The Key Vault secret holding that Discord app\'s client secret.')
+param discordClientSecretName string = 'SpellstickLive'
+
 @description('This game only: comma-separated Discord role IDs allowed to play instead of the shared Players role (for example a beta role). Empty = the shared Players role.')
 param gameAllowedRoleIds string = ''
 
@@ -45,11 +51,12 @@ param customDomainCertificateId string = ''
 @description('Signs the session cookies. Generated fresh on every run of this template, which logs everyone out; pass the same value to keep sessions.')
 param sessionSecret string = '${newGuid()}${newGuid()}'
 
-// Settings shared by every Darkspace game, kept once in Key Vault. Each becomes an environment
-// variable on the app, read when it starts.
+// Settings kept in Key Vault: this game's Discord client secret, and the Darkspace server settings
+// shared by every Darkspace game. Each becomes an environment variable on the app, read when it
+// starts. (Until 2026-10-15 the game used the card game's Discord app, Integrations--Discord--ClientId
+// and --ClientSecret; one Discord app can host only one Activity.)
 var sharedSettings = [
-  { env: 'DISCORD_CLIENT_ID', secret: 'Integrations--Discord--ClientId' }
-  { env: 'DISCORD_CLIENT_SECRET', secret: 'Integrations--Discord--ClientSecret' }
+  { env: 'DISCORD_CLIENT_SECRET', secret: discordClientSecretName }
   { env: 'DISCORD_GUILD_ID', secret: 'Integrations--Discord--GuildId' }
   { env: 'DISCORD_PLAYER_ROLE_IDS', secret: 'Integrations--Discord--PlayerRoleIds' }
   { env: 'DISCORD_MODERATOR_ROLE_IDS', secret: 'Integrations--Discord--ModeratorRoleIds' }
@@ -105,6 +112,7 @@ module app 'modules/app.bicep' = {
     deployPrincipalId: identities.outputs.deployPrincipalId
     keyVaultUrl: 'https://${keyVaultName}${environment().suffixes.keyvaultDns}'
     sharedSettings: sharedSettings
+    discordClientId: discordClientId
     gameAllowedRoleIds: gameAllowedRoleIds
     minReplicas: minReplicas
     customDomain: customDomain

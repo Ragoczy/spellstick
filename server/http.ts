@@ -3,6 +3,8 @@ import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from 'node:
 import { extname, resolve, sep } from 'node:path';
 import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
 import {
+  activityOrigin,
+  activitySignIn,
   callback,
   login,
   logout,
@@ -16,7 +18,8 @@ import {
 
 /**
  * The whole server: the built game from dist/ plus the Discord login routes (log in, log out,
- * unlink). Game logic stays in the browser; this only serves files and signs people in.
+ * unlink, and sign-in inside Discord). Game logic stays in the browser; this only serves files
+ * and signs people in.
  */
 
 export interface ServerOptions {
@@ -89,6 +92,7 @@ export function serializeCookie(c: ResponseCookie): string {
   if (c.secure) parts.push('Secure');
   if (c.httpOnly) parts.push('HttpOnly');
   if (c.sameSite) parts.push(`SameSite=${c.sameSite}`);
+  if (c.partitioned) parts.push('Partitioned');
   return parts.join('; ');
 }
 
@@ -145,7 +149,23 @@ const AUTH_ROUTES: Record<
   '/api/auth/me': { method: 'GET', run: me },
   '/api/auth/logout': { method: 'POST', run: (req) => logout(req) },
   '/api/auth/unlink': { method: 'POST', run: unlink },
+  '/api/discord/signin': { method: 'POST', run: activitySignIn },
 };
+
+/** The biggest request body the API reads; its only one is { code } from inside Discord. */
+const MAX_BODY_BYTES = 4096;
+
+/** The request body as text, or null if it's bigger than MAX_BODY_BYTES. */
+async function readBody(req: IncomingMessage): Promise<string | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) return null;
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
 
 export function createHandler(opts: ServerOptions): Handler {
   const root = resolve(opts.distDir);
@@ -196,8 +216,13 @@ export function createHandler(opts: ServerOptions): Handler {
 
     const origin = publicOrigin(req);
     if (!origin) return sendText(res, 400, 'Bad host');
-    // The shared sign-in contract: only this site's own pages may send anything but GET.
-    if (method !== 'GET' && method !== 'HEAD' && req.headers.origin !== origin) {
+    // The shared sign-in contract: only this site's own pages may send anything but GET. Inside
+    // Discord, the game's page is on the Activity's own address, which serves only this game.
+    const sender = req.headers.origin;
+    const fromGame =
+      sender === origin ||
+      (sender !== undefined && sender === activityOrigin(opts.deps.env.DISCORD_CLIENT_ID));
+    if (method !== 'GET' && method !== 'HEAD' && !fromGame) {
       return sendText(res, 403, 'Forbidden');
     }
 
@@ -211,7 +236,10 @@ export function createHandler(opts: ServerOptions): Handler {
           '{"error":"not_found"}',
         );
       if (method !== route.method) return sendText(res, 405, 'Method not allowed', { Allow: route.method });
+      const body = method === 'POST' ? await readBody(req) : undefined;
+      if (body === null) return sendText(res, 413, 'Too large');
       const authReq: AuthRequest = {
+        body,
         url: `${origin}${req.url ?? '/'}`,
         headers: {
           get: (name) => {

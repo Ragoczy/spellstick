@@ -3,9 +3,9 @@ import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
 import { LESSONS, TRAINING_TEXT } from '../content/training';
 import { DRILLS, type Difficulty, type DrillId } from '../sim';
-import type { AuthState } from './auth';
+import { DISCORD_SIGN_IN_MESSAGES, type AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
-import { PRIVACY_URL, TERMS_URL } from './links';
+import { PRIVACY_URL, SITE_ADDRESS, TERMS_URL } from './links';
 import type { TeamTally } from './matchStats';
 import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
 import { fillControls, nextUnfinished } from './training';
@@ -51,23 +51,36 @@ export interface TitleActions {
 /**
  * Play (and Training) only once logged in with Discord; until then the main button is the login.
  * `nudgeTraining` (no lesson finished yet) points new players at Training; Play stays the main button.
+ * `inDiscord`: launched as a Discord Activity, where sign-in happens at launch and there is no
+ * login or log out button (the page can't leave Discord's frame).
  */
-export function titleScreen(a: TitleActions, auth: AuthState, nudgeTraining = false): HTMLElement {
+export function titleScreen(
+  a: TitleActions,
+  auth: AuthState,
+  nudgeTraining = false,
+  inDiscord = false,
+): HTMLElement {
   const canPlay = auth.status === 'in' || auth.status === 'dev';
   const main = canPlay
     ? button('Play', a.play, 'btn primary')
     : auth.status === 'checking'
-      ? el('button', { class: 'btn', type: 'button', disabled: '' }, 'Checking login…')
-      : button('Log in with Discord', a.login, 'btn primary discord');
+      ? el(
+          'button',
+          { class: 'btn', type: 'button', disabled: '' },
+          inDiscord ? 'Signing in through Discord…' : 'Checking login…',
+        )
+      : inDiscord
+        ? null
+        : button('Log in with Discord', a.login, 'btn primary discord');
   return screen(
     'title',
     el('h1', { class: 'title-logo' }, 'SPELLSTICK'),
     el('p', { class: 'tagline' }, 'Full-contact magical box lacrosse. Witches, sticks, and spells.'),
-    accountLine(auth, a.logout),
+    accountLine(auth, a.logout, inDiscord),
     el(
       'div',
       { class: 'stack' },
-      main,
+      ...(main ? [main] : []),
       ...(canPlay ? trainingButton(a.training, nudgeTraining) : []),
       button('Controls', a.controls),
       button('Settings', a.settings),
@@ -103,7 +116,7 @@ function policyLinks(): HTMLAnchorElement[] {
 }
 
 /** Who's logged in (avatar, name, log out), or why to log in. */
-function accountLine(auth: AuthState, logout: () => void): HTMLElement {
+function accountLine(auth: AuthState, logout: () => void, inDiscord: boolean): HTMLElement {
   if (auth.status === 'in') {
     const avatar = el('img', {
       class: 'avatar',
@@ -118,17 +131,20 @@ function accountLine(auth: AuthState, logout: () => void): HTMLElement {
       { class: 'account', 'aria-label': 'Logged in' },
       avatar,
       el('span', { class: 'account-name' }, auth.user.username),
-      button('Log out', logout, 'btn small'),
+      ...(inDiscord ? [] : [button('Log out', logout, 'btn small')]),
     );
   }
   if (auth.status === 'out') {
+    const fallback = inDiscord
+      ? DISCORD_SIGN_IN_MESSAGES.failed
+      : 'Log in with Discord to play. Open to Players in the Darkspace Discord server.';
     return el(
       'div',
       { class: 'account' },
       el(
         'p',
-        { class: 'login-note', role: auth.message ? 'alert' : 'note' },
-        auth.message ?? 'Log in with Discord to play. Open to Players in the Darkspace Discord server.',
+        { class: 'login-note', role: auth.message || inDiscord ? 'alert' : 'note' },
+        auth.message ?? fallback,
       ),
     );
   }
@@ -138,10 +154,15 @@ function accountLine(auth: AuthState, logout: () => void): HTMLElement {
   return el('div', { class: 'account' });
 }
 
-/** Settings: help (Report a problem) and, when logged in, "Unlink my Discord account" at the bottom. */
+/**
+ * Settings: help (Report a problem) and, when logged in, "Unlink my Discord account" at the bottom.
+ * Inside Discord the player is their Discord account and every launch signs in again, so unlinking
+ * there would undo itself; Settings points to the browser version instead.
+ */
 export function settingsScreen(
   auth: AuthState,
   a: { report(): void; unlink(): void; back(): void },
+  inDiscord = false,
 ): HTMLElement {
   const account =
     auth.status === 'in'
@@ -150,8 +171,20 @@ export function settingsScreen(
             'section',
             { class: 'danger-zone', 'aria-label': 'Discord account' },
             el('h3', {}, 'Discord account'),
-            el('p', { class: 'settings-note' }, `Logged in as ${auth.user.username}.`),
-            button('Unlink my Discord account', a.unlink, 'btn danger'),
+            el(
+              'p',
+              { class: 'settings-note' },
+              inDiscord
+                ? `Signed in through Discord as ${auth.user.username}.`
+                : `Logged in as ${auth.user.username}.`,
+            ),
+            inDiscord
+              ? el(
+                  'p',
+                  { class: 'settings-note' },
+                  `To unlink your Discord account, use Settings in the browser version at ${SITE_ADDRESS}.`,
+                )
+              : button('Unlink my Discord account', a.unlink, 'btn danger'),
           ),
         ]
       : [];

@@ -5,6 +5,7 @@ import { signJwt, verifyJwt } from './jwt.js';
 /**
  * Discord login (OAuth2 authorization code flow, scopes "identify guilds.members.read"),
  * with the shared Darkspace Games access rule (Darkspace Discord server roles; see access.ts).
+ * Also signs players in when the game runs inside Discord as an Activity (activitySignIn).
  * Kept free of HTTP plumbing so it can be unit tested; server/http.ts routes requests here.
  */
 
@@ -26,6 +27,8 @@ export interface AuthRequest {
   /** The full URL as the browser used it (public origin, path, query). */
   url: string;
   headers: { get(name: string): string | null };
+  /** The request body, for POSTs that send one (size-capped by server/http.ts). */
+  body?: string;
 }
 
 /** A Set-Cookie, serialized by server/http.ts. */
@@ -39,6 +42,8 @@ export interface ResponseCookie {
   secure?: boolean;
   httpOnly?: boolean;
   sameSite?: 'Strict' | 'Lax' | 'None';
+  /** CHIPS: kept only for this site inside the page that frames it (Discord). */
+  partitioned?: boolean;
 }
 
 /** What a handler answers; server/http.ts writes it out. */
@@ -70,6 +75,11 @@ const NO_STORE = { 'Cache-Control': 'no-store' };
 /** The origin the browser used, so one build works on the Azure address, the custom domain, and localhost. */
 export function requestOrigin(req: AuthRequest): string {
   return new URL(req.url).origin;
+}
+
+/** Inside Discord, the game is served from https://<client id>.discordsays.com through Discord's proxy. */
+export function activityOrigin(clientId: string | undefined): string | null {
+  return clientId && ID_RE.test(clientId) ? `https://${clientId}.discordsays.com` : null;
 }
 
 /** Domain=.games.darkspace.press on that domain; host-only (undefined) everywhere else. */
@@ -126,6 +136,25 @@ function stateCookie(value: string, maxAge: number): ResponseCookie {
     httpOnly: true,
     secure: true,
     sameSite: 'Lax',
+  };
+}
+
+/**
+ * The session cookie inside Discord. The game is a frame there, so the browser treats it as a
+ * third-party cookie: SameSite=None and Partitioned, as Discord's networking guide asks. No
+ * Domain: it belongs to <client id>.discordsays.com only, apart from the browser's own cookie.
+ */
+function activitySessionCookie(value: string, maxAge: number): ResponseCookie {
+  return {
+    name: SESSION_COOKIE,
+    value,
+    path: '/',
+    maxAge,
+    ...(maxAge === 0 ? { expires: new Date(0) } : {}),
+    httpOnly: true,
+    secure: true,
+    sameSite: 'None',
+    partitioned: true,
   };
 }
 
@@ -198,6 +227,33 @@ export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthRe
   const origin = requestOrigin(req);
   let accessToken: string;
   try {
+    accessToken = await exchangeCode(deps, clientId, clientSecret, {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: callbackUrl(origin),
+    });
+  } catch (e) {
+    return fail((e as Error).message);
+  }
+
+  const result = await admit(deps, accessToken, settings);
+  if (result.kind === 'failed') return fail(result.why);
+  if (result.kind === 'refused') return redirect(`/?login=${result.reason}`, [clearState]);
+  return redirect('/', [
+    clearState,
+    sessionCookie(origin, sessionToken(result, secret, deps), SESSION_SECONDS),
+  ]);
+}
+
+/** Trades a one-time code at Discord's token endpoint. Throws with a reason fit for the log (no secrets). */
+async function exchangeCode(
+  deps: AuthDeps,
+  clientId: string,
+  clientSecret: string,
+  form: Record<string, string>,
+): Promise<string> {
+  let body: { access_token?: unknown };
+  try {
     const res = await deps.fetch(`${DISCORD_API}/oauth2/token`, {
       method: 'POST',
       headers: {
@@ -205,36 +261,54 @@ export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthRe
         Accept: 'application/json',
         Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: callbackUrl(origin),
-      }),
+      body: new URLSearchParams(form),
       signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
-    if (!res.ok) return fail(`token exchange returned ${res.status}`);
-    const body = (await res.json()) as { access_token?: unknown };
-    if (typeof body.access_token !== 'string') return fail('token exchange returned no access token');
-    accessToken = body.access_token;
+    if (!res.ok) throw new Error(`token exchange returned ${res.status}`);
+    body = (await res.json()) as { access_token?: unknown };
   } catch (e) {
-    return fail(`token exchange error: ${(e as Error).name}`);
+    throw (e as Error).message.startsWith('token exchange')
+      ? e
+      : new Error(`token exchange error: ${(e as Error).name}`);
   }
+  if (typeof body.access_token !== 'string') throw new Error('token exchange returned no access token');
+  return body.access_token;
+}
 
-  let user: { id: string; username: string; avatar: string | null };
+interface DiscordProfile {
+  id: string;
+  username: string;
+  avatar: string | null;
+}
+
+type Admission =
+  | { kind: 'allowed'; user: DiscordProfile; role: AccessRole }
+  | { kind: 'refused'; reason: 'not-member' | 'no-role' }
+  /** Discord had trouble; `why` is for the log. */
+  | { kind: 'failed'; why: string };
+
+/** With a player's Discord token: who they are, their Darkspace server roles, then the access rule. */
+async function admit(
+  deps: AuthDeps,
+  accessToken: string,
+  settings: NonNullable<ReturnType<typeof accessSettings>>,
+): Promise<Admission> {
+  const failed = (why: string): Admission => ({ kind: 'failed', why });
+  let user: DiscordProfile;
   try {
     const res = await deps.fetch(`${DISCORD_API}/users/@me`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
       signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
-    if (!res.ok) return fail(`users/@me returned ${res.status}`);
+    if (!res.ok) return failed(`users/@me returned ${res.status}`);
     const u = (await res.json()) as { id?: unknown; username?: unknown; avatar?: unknown };
     if (typeof u.id !== 'string' || !ID_RE.test(u.id) || typeof u.username !== 'string') {
-      return fail('users/@me returned an unexpected shape');
+      return failed('users/@me returned an unexpected shape');
     }
     const avatar = typeof u.avatar === 'string' && AVATAR_RE.test(u.avatar) ? u.avatar : null;
     user = { id: u.id, username: u.username, avatar };
   } catch (e) {
-    return fail(`users/@me error: ${(e as Error).name}`);
+    return failed(`users/@me error: ${(e as Error).name}`);
   }
 
   // Roles in the Darkspace server; a 404 means "not in the server".
@@ -245,32 +319,104 @@ export async function callback(req: AuthRequest, deps: AuthDeps): Promise<AuthRe
       signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
     if (res.status === 404) memberRoles = null;
-    else if (!res.ok) return fail(`guild member lookup returned ${res.status}`);
+    else if (!res.ok) return failed(`guild member lookup returned ${res.status}`);
     else {
       const m = (await res.json()) as { roles?: unknown };
-      if (!Array.isArray(m.roles)) return fail('guild member lookup returned an unexpected shape');
+      if (!Array.isArray(m.roles)) return failed('guild member lookup returned an unexpected shape');
       memberRoles = m.roles.filter((r): r is string => typeof r === 'string');
     }
   } catch (e) {
-    return fail(`guild member lookup error: ${(e as Error).name}`);
+    return failed(`guild member lookup error: ${(e as Error).name}`);
   }
 
   const access = checkAccess(user.id, memberRoles, settings);
-  if (!access.allowed) return redirect(`/?login=${access.reason}`, [clearState]);
+  if (!access.allowed) return { kind: 'refused', reason: access.reason };
+  return { kind: 'allowed', user, role: access.role };
+}
 
+function sessionToken(a: { user: DiscordProfile; role: AccessRole }, secret: string, deps: AuthDeps): string {
   const now = deps.nowSeconds();
-  const token = signJwt(
+  return signJwt(
     {
-      sub: user.id,
-      username: user.username,
-      avatar: user.avatar,
-      role: access.role,
+      sub: a.user.id,
+      username: a.user.username,
+      avatar: a.user.avatar,
+      role: a.role,
       iat: now,
       exp: now + SESSION_SECONDS,
     },
     secret,
   );
-  return redirect('/', [clearState, sessionCookie(origin, token, SESSION_SECONDS)]);
+}
+
+/** What POST /api/discord/signin answers with a 200. */
+export type ActivitySignInBody =
+  | { access_token: string; signedIn: true }
+  | { access_token: string; signedIn: false; reason: 'not-member' | 'no-role' | 'failed' };
+
+/**
+ * POST /api/discord/signin { code }: the game running inside Discord (an Activity). At launch
+ * the page asks Discord for a one-time code (scopes identify, guilds.members.read, and
+ * rpc.activities.write); only the server knows the app secret, so it trades the code here.
+ * Then the same checks as browser sign-in, and if they pass, a session cookie that works in
+ * Discord's frame. Every launch signs in afresh, so roles are checked each time, and a refused
+ * player's earlier session there ends. The access token goes back to the page (even when
+ * refused) for the "Playing Spellstick" profile details; it is never stored or logged.
+ */
+export async function activitySignIn(req: AuthRequest, deps: AuthDeps): Promise<AuthResponse> {
+  const {
+    DISCORD_CLIENT_ID: clientId,
+    DISCORD_CLIENT_SECRET: clientSecret,
+    SESSION_SECRET: secret,
+  } = deps.env;
+  if (!clientId) return notConfigured(deps, 'DISCORD_CLIENT_ID');
+  if (!clientSecret) return notConfigured(deps, 'DISCORD_CLIENT_SECRET');
+  if (!secret) return notConfigured(deps, 'SESSION_SECRET');
+  const settings = accessSettings(deps.env);
+  if (!settings) return notConfigured(deps, 'DISCORD_GUILD_ID');
+  // Only the game's own page inside Discord may send this.
+  if (req.headers.get('origin') !== activityOrigin(clientId)) {
+    return { status: 403, headers: NO_STORE, jsonBody: { error: 'bad_origin' } };
+  }
+
+  let code: unknown;
+  try {
+    code = (JSON.parse(req.body ?? '') as { code?: unknown } | null)?.code;
+  } catch {
+    code = undefined;
+  }
+  // Discord's codes are short; anything else isn't worth sending on.
+  if (typeof code !== 'string' || code.length === 0 || code.length > 200) {
+    return { status: 400, headers: NO_STORE, jsonBody: { error: 'missing_code' } };
+  }
+
+  let accessToken: string;
+  try {
+    // The SDK hands the page this code directly, not through a redirect, so there's no redirect_uri.
+    accessToken = await exchangeCode(deps, clientId, clientSecret, {
+      grant_type: 'authorization_code',
+      code,
+    });
+  } catch (e) {
+    deps.log(`auth: Discord Activity sign-in failed (${(e as Error).message})`);
+    return { status: 502, headers: NO_STORE, jsonBody: { error: 'code_refused' } };
+  }
+
+  const result = await admit(deps, accessToken, settings);
+  let body: ActivitySignInBody;
+  let cookies: ResponseCookie[] = [];
+  if (result.kind === 'failed') {
+    // Discord had trouble, not the player: keep any earlier session.
+    deps.log(`auth: Discord Activity sign-in failed (${result.why})`);
+    body = { access_token: accessToken, signedIn: false, reason: 'failed' };
+  } else if (result.kind === 'refused') {
+    body = { access_token: accessToken, signedIn: false, reason: result.reason };
+    cookies = [activitySessionCookie('', 0)];
+  } else {
+    body = { access_token: accessToken, signedIn: true };
+    cookies = [activitySessionCookie(sessionToken(result, secret, deps), SESSION_SECONDS)];
+  }
+  return { status: 200, headers: NO_STORE, jsonBody: body, cookies };
 }
 
 /** GET /api/auth/me: the user from a valid session, or 401. */
@@ -311,8 +457,8 @@ export const unlinkAuditLine = (nowSeconds: number) =>
 /**
  * POST /api/auth/unlink ("Unlink my Discord account"): the server stores nothing per player and
  * never kept Discord's token, so this ends the session and writes a time-only audit line. The
- * browser clears its own saved settings. Discord's token revocation is deliberately not called:
- * it would end the player's whole authorization for this Discord app, which the card game shares.
+ * browser clears its own saved settings. Discord's token revocation is not called (yet): the game
+ * used to share the card game's Discord app, where revoking would have ended that game's sign-in too.
  */
 export function unlink(req: AuthRequest, deps: AuthDeps): AuthResponse {
   if (!sameOrigin(req)) return { status: 403, headers: NO_STORE, jsonBody: { error: 'bad_origin' } };

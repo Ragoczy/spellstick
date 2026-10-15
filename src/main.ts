@@ -4,7 +4,11 @@ import { PALETTE } from './render/palette';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from './render/view';
 import { App } from './ui/app';
 import { mountBuildTag } from './ui/buildTag';
+import { startDiscord } from './ui/discord';
 import './ui/screens.css';
+
+// Inside Discord, connect first so sign-in starts while Phaser loads. Elsewhere this does nothing.
+startDiscord();
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,

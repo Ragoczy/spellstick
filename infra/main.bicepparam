@@ -6,6 +6,10 @@ param image = ''
 // Discord settings shared by all Darkspace games live in Key Vault as Integrations--Discord--*
 // (see infra/README.md). Only this game's own choices are here.
 
+// This game's own Discord app: Developer Portal > General Information > Application ID (not a
+// secret). Its client secret is the Key Vault secret SpellstickLive. Must be filled in to deploy.
+param discordClientId = ''
+
 // Who may play. Empty = the shared Players role. Set a role ID to limit the game to, say, a beta role.
 param gameAllowedRoleIds = ''
 

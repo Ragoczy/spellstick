@@ -36,6 +36,20 @@ export const LOGIN_MESSAGES: Record<string, string> = {
     'Your Spellstick data has been deleted and the game is disconnected from Discord. Your Discord account was not affected.',
 };
 
+/**
+ * Inside Discord there's no login button: the player is signed in as their Discord account at
+ * launch (see discord.ts). If that doesn't work, the title says why and what to do.
+ */
+export const DISCORD_SIGN_IN_MESSAGES: Record<'not-member' | 'no-role' | 'failed' | 'discord', string> = {
+  'not-member':
+    'Spellstick is for members of the Darkspace Discord server. Join the server, then launch Spellstick again.',
+  'no-role':
+    "Your Darkspace Discord account doesn't have the Players role yet. Ask a mod for it, then launch Spellstick again.",
+  failed: "Couldn't sign you in through Discord. Close Spellstick and launch it again.",
+  discord:
+    "Couldn't connect to Discord, or the permission request was declined. Close Spellstick and launch it again.",
+};
+
 /** Reads the /api/auth/me answer. `null` means the auth API isn't there (or is broken). */
 export function parseMe(
   status: number,

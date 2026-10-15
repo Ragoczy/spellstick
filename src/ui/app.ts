@@ -3,11 +3,29 @@ import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId } from '../content/teams
 import { MatchScene, SCENE_EVENTS, type DrillUpdate, type MatchSetup } from '../render/MatchScene';
 import { DRILLS, makeConfig, type Difficulty, type MatchState, type SimEvent } from '../sim';
 import { clipId } from '../content/announcer';
-import { TRAINING_TEXT } from '../content/training';
+import { LESSONS, TRAINING_TEXT } from '../content/training';
 import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
-import { LOGIN_URL, checkSession, logOut, takeLoginMessage, unlinkAccount, type AuthState } from './auth';
+import {
+  DISCORD_SIGN_IN_MESSAGES,
+  LOGIN_URL,
+  checkSession,
+  logOut,
+  takeLoginMessage,
+  unlinkAccount,
+  type AuthState,
+} from './auth';
 import { Sfx, type SoundName } from './audio';
+import {
+  IN_DISCORD,
+  MENU_PRESENCE,
+  discordSignIn,
+  matchPresence,
+  openExternal,
+  resultPresence,
+  setDiscordPresence,
+  trainingPresence,
+} from './discord';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
 import { PadMenus } from './padMenus';
 import { reportMailto } from './report';
@@ -64,6 +82,8 @@ export class App {
   private trainingDone = loadTrainingProgress(localStorageOrNull());
   private lessonTimer = 0;
   private lessonDeviceTimer = 0;
+  /** When the current match started (ms since 1970), for the elapsed time on a Discord profile. */
+  private matchStartedAt = 0;
 
   constructor(private readonly game: Phaser.Game) {
     this.root = document.createElement('div');
@@ -149,6 +169,7 @@ export class App {
     this.inMatch = false;
     this.announcer.clear();
     this.voice.stop();
+    setDiscordPresence(MENU_PRESENCE);
     if (this.scene.matchSetup.mode !== 'demo') {
       this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
     }
@@ -173,6 +194,7 @@ export class App {
         },
         this.auth,
         this.trainingDone.size === 0,
+        IN_DISCORD,
       ),
     );
   }
@@ -180,11 +202,15 @@ export class App {
   private showSettings(): void {
     const back = this.click(() => this.showTitle());
     this.show(
-      settingsScreen(this.auth, {
-        report: this.click(() => this.showReport(() => this.showSettings())),
-        unlink: this.click(() => this.showUnlink()),
-        back,
-      }),
+      settingsScreen(
+        this.auth,
+        {
+          report: this.click(() => this.showReport(() => this.showSettings())),
+          unlink: this.click(() => this.showUnlink()),
+          back,
+        },
+        IN_DISCORD,
+      ),
       back,
     );
   }
@@ -196,7 +222,7 @@ export class App {
       reportScreen(reporter, {
         send: (category) => {
           this.sfx.play('click');
-          window.location.href = reportMailto(category, reporter);
+          openExternal(reportMailto(category, reporter));
         },
         back: this.click(back),
       }),
@@ -220,8 +246,17 @@ export class App {
     );
   }
 
-  /** Asks the auth API who's logged in, then redraws the title if it's showing. */
+  /**
+   * Asks the auth API who's logged in, then redraws the title if it's showing. Inside Discord,
+   * waits for the sign-in at launch first (its cookie is what /api/auth/me then reads).
+   */
   private async refreshAuth(message?: string): Promise<void> {
+    const viaDiscord = await discordSignIn();
+    if (viaDiscord && !viaDiscord.signedIn) {
+      this.auth = { status: 'out', message: DISCORD_SIGN_IN_MESSAGES[viaDiscord.reason] };
+      if (this.onTitle) this.showTitle();
+      return;
+    }
     this.auth = await checkSession(import.meta.env.DEV);
     if (message && this.auth.status === 'out') this.auth = { status: 'out', message };
     if (this.onTitle) this.showTitle();
@@ -288,6 +323,7 @@ export class App {
     );
     // The drill reports its progress (and the card appears) as it starts.
     this.scene.startMatch({ ...this.selection, mode: 'training', drill: DRILLS[lesson] });
+    setDiscordPresence(trainingPresence(LESSONS[DRILLS[lesson]!].title));
   }
 
   private onDrill(u: DrillUpdate): void {
@@ -311,6 +347,7 @@ export class App {
     this.leaveTraining();
     this.inMatch = false;
     this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
+    setDiscordPresence(MENU_PRESENCE);
     this.show(
       trainingDoneScreen({
         play: this.click(() => this.showTeamSelect()),
@@ -335,6 +372,7 @@ export class App {
     this.voice.stop();
     void this.voice.preload(); // starting a match is a user gesture: audio is unlocked
     this.scene.startMatch({ ...this.selection, mode: 'play' });
+    this.matchStartedAt = Date.now();
   }
 
   private pause(): void {
@@ -417,6 +455,12 @@ export class App {
     }
     // Training has sound (the faceoff whistle matters) but no stats or announcer.
     if (setup.mode !== 'play') return;
+    if (IN_DISCORD) {
+      const periods = this.config.match.periods;
+      setDiscordPresence(
+        matchPresence({ ...setup, score: state.score, period: state.period, periods }, this.matchStartedAt),
+      );
+    }
     tallyEvents(this.tally, events);
     // The player is always the home side (team 0).
     const callout = Announcer.classify(events, state, this.config, 0);
@@ -430,6 +474,7 @@ export class App {
   private onMatchOver(state: MatchState, setup: MatchSetup): void {
     this.inMatch = false;
     this.sfx.play('whistle');
+    if (setup.mode === 'play') setDiscordPresence(resultPresence({ ...setup, score: state.score }));
     // Let the final goal/whistle land before the results come up.
     window.setTimeout(() => {
       this.show(

@@ -14,7 +14,7 @@ const noRandom = {
 };
 
 const browserOnlyGlobals = ['window', 'document', 'navigator', 'localStorage', 'requestAnimationFrame'].map(
-  (name) => ({ name, message: 'src/sim and src/ai must run headless in Node.' }),
+  (name) => ({ name, message: 'src/sim, src/ai, and src/net must run headless in Node.' }),
 );
 
 export default tseslint.config(
@@ -43,6 +43,23 @@ export default tseslint.config(
               group: ['**/render/**', '**/ui/**', '**/ai/**'],
               message: 'src/sim must not depend on render, ui, or ai.',
             },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/net/**/*.ts'],
+    rules: {
+      ...noRandom,
+      'no-restricted-globals': ['error', ...browserOnlyGlobals],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: 'phaser', message: 'src/net runs on the server too and must not import Phaser.' }],
+          patterns: [
+            { group: ['phaser/*'], message: 'src/net must not import Phaser.' },
+            { group: ['**/render/**', '**/ui/**'], message: 'src/net must not depend on render or ui.' },
           ],
         },
       ],

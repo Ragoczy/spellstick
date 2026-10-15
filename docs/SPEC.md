@@ -101,4 +101,19 @@ Title screen → team select (your team, opponent, difficulty) → match → res
 
 ## 10. Out of scope for v1
 
-Online multiplayer, local 2-player, mobile/touch, accounts and leaderboards, season mode, player progression, real art, music, and voiced announcer audio.
+Local 2-player, mobile/touch, accounts and leaderboards, season mode, player progression, real art, music, and voiced announcer audio.
+
+Online 1v1 is no longer out of scope: see §11 (Paul, 2026-10-15).
+
+## 11. Online play (Paul, 2026-10-15)
+
+- **1v1.** Two people, each running one team exactly as in single-player: you control one witch at a time, control follows the ball, Space switches on defense (§5), and you take your own faceoffs. The AI plays everyone else on both teams at Normal, in its team's style.
+- **Where.** Inside Discord, everyone in the same Activity (the same voice channel launch) shares one room. In a browser, **Play online** makes a room link to send to a friend. Single-player is unchanged in both places.
+- **Who.** The same Darkspace server-and-role check as logging in. Your Discord name is your name.
+- **Lobby.** Two seats: home (Wyverns) and away (Ichthyocentaurs) **[DEFAULT]**. Take a free seat or watch. The match starts when both seated players are ready.
+- **Spectators.** Everyone else in the room watches the match live.
+- **The server runs the match.** It's the referee: players send their controls, and it sends the match back. Each player's screen predicts a little ahead so their own witch answers at once.
+- **No pause online.** Esc opens a menu whose only choices are to go on playing or leave.
+- **Leaving or dropping.** The AI takes over that side at once. The same Discord account can come back into the room and take the seat back mid-match.
+- **Goal replays** play for everyone while the match waits. The replay ends when it's over or when both players skip it.
+- **Results** show to everyone in the room; **Rematch** returns everyone to the lobby with the same seats.

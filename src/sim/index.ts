@@ -16,3 +16,4 @@ export * from './loop';
 export * from './rng';
 export * from './hash';
 export * from './vec';
+export * from './control';

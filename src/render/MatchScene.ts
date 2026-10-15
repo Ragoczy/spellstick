@@ -14,11 +14,14 @@ import {
   DrillJudge,
   facingDir,
   FixedStepper,
+  followPlay,
   makeConfig,
   matchRoster,
   secondsToTicks,
+  startingControl,
   stepMatch,
   stickHead,
+  switchControl,
   tickSeconds,
   type Difficulty,
   type DrillId,
@@ -316,11 +319,7 @@ export class MatchScene extends Phaser.Scene {
     }
 
     // Control follows the ball when our team gets it (SPEC §5).
-    if (this.humanPlays) {
-      const carrier =
-        this.state.ball.carrier !== null ? this.state.players[this.state.ball.carrier] : undefined;
-      if (carrier && carrier.team === HUMAN_TEAM && carrier.role === 'runner') this.controlledId = carrier.id;
-    }
+    if (this.humanPlays) this.controlledId = followPlay(this.state, HUMAN_TEAM, this.controlledId);
 
     if (this.training) this.judgeDrill();
 
@@ -475,17 +474,14 @@ export class MatchScene extends Phaser.Scene {
   /** At every faceoff you take the draw yourself (SPEC §4.1). */
   private onFaceoffSet(): void {
     if (!this.humanPlays) return;
-    const f = this.state.faceoff;
-    if (f) {
-      this.controlledId = f.takers[HUMAN_TEAM];
+    this.controlledId = startingControl(this.state, HUMAN_TEAM);
+    if (this.state.faceoff) {
       this.hud.flash(
         TEXT.faceoff,
         1500,
         PALETTE.mana,
         this.input_.usingPad ? TEXT.faceoffHintPad : TEXT.faceoffHint,
       );
-    } else {
-      this.controlledId = this.state.players.findIndex((p) => p.team === HUMAN_TEAM && p.role === 'runner');
     }
   }
 
@@ -494,19 +490,8 @@ export class MatchScene extends Phaser.Scene {
    * already you, go to the next nearest. On offense control follows the ball anyway.
    */
   private switchPlayer(): void {
-    const s = this.state;
-    if (!this.humanPlays || this.paused || s.phase === 'faceoff') return;
-    const carrier = s.ball.carrier !== null ? s.players[s.ball.carrier] : undefined;
-    if (carrier && carrier.team === HUMAN_TEAM) return;
-    const mates = s.players
-      .filter((p) => p.team === HUMAN_TEAM && p.role === 'runner')
-      .sort(
-        (a, b) =>
-          Math.hypot(a.pos.x - s.ball.pos.x, a.pos.y - s.ball.pos.y) -
-            Math.hypot(b.pos.x - s.ball.pos.x, b.pos.y - s.ball.pos.y) || a.id - b.id,
-      );
-    const next = mates[0]?.id === this.controlledId ? mates[1] : mates[0];
-    if (next) this.controlledId = next.id;
+    if (!this.humanPlays || this.paused) return;
+    this.controlledId = switchControl(this.state, HUMAN_TEAM, this.controlledId);
   }
 
   /** Hex Shove: a gold cone that flares out from the caster's stick and fades. */

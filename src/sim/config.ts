@@ -331,6 +331,8 @@ export const DEFAULT_CONFIG = {
     runner: {
       /** Don't pass within this long of getting the ball (stops ping-pong). */
       minHoldSeconds: 0.75,
+      /** Unless desperate, only pass to a teammate at least this much closer to the goal (m). */
+      passAdvance: 3,
       /** Shots need this much clearance from opposing bodies beyond body + ball radius. */
       shotLaneMargin: 0.2,
       /** Shoot only when at least this far out from the goal line, and not wider than this ratio. */
@@ -415,6 +417,72 @@ export const DEFAULT_CONFIG = {
       /** ...or faster than this (m/s). */
       wardDangerSpeed: 27,
     },
+    /**
+     * Team playing styles (M9). Each scales the team's difficulty level and runner tuning:
+     * 1 = unchanged, except `shootRange`, which adds meters. AI decisions only: every player
+     * has the same body, stick, and spells whatever the style, and the human is unaffected.
+     * Which team plays which style is in src/content/teams.ts.
+     */
+    styles: {
+      /** The baseline every other style is measured against. */
+      balanced: {
+        checkChance: 1,
+        spellEagerness: 1,
+        holdSeconds: 1,
+        passAdvance: 1,
+        forceShot: 1,
+        shootRange: 0,
+      },
+      /** Hits hard and carries the ball: more checks, holds on longer, shoots through traffic, casts less. */
+      physical: {
+        checkChance: 1.5,
+        spellEagerness: 0.7,
+        holdSeconds: 1.5,
+        passAdvance: 1.3,
+        forceShot: 1.4,
+        shootRange: 0,
+      },
+      /** Moves the ball: passes early and sideways, and shoots from a little farther out. */
+      passing: {
+        checkChance: 1,
+        spellEagerness: 1,
+        holdSeconds: 0.6,
+        passAdvance: 0.35,
+        forceShot: 1,
+        shootRange: 1,
+      },
+      /** Leans on magic: casts more often (Hex Shove, Quickstep, Bent Shot), hits less. */
+      spellcraft: {
+        checkChance: 0.7,
+        spellEagerness: 1.35,
+        holdSeconds: 1,
+        passAdvance: 1,
+        forceShot: 1,
+        shootRange: 0,
+      },
+    },
+  },
+
+  /** The training ground (M9): small drills that teach one thing each. Layouts are in src/sim/drills.ts. */
+  training: {
+    /** Shot clock and period length in drills: long enough never to come up (s). */
+    clockSeconds: 3600,
+    /**
+     * The drill goalie's save chance starts here instead of `goalie.saveBase`: beatable, so
+     * the shooting lessons teach the shot rather than test it (a good shot from the drill
+     * spots scores about half the time).
+     */
+    goalieSaveBase: 0.7,
+    /** A drill's opponents (the goalie, the faceoff taker) play at this level. */
+    opponentLevel: 'easy' as 'easy' | 'normal' | 'hard',
+    /** After a point or a miss, the drill sets up again this long later (s). */
+    resetSeconds: 1.2,
+    /** The jogging carrier in the hitting drills moves at this fraction of top speed... */
+    joggerSpeed: 0.55,
+    /** ...around a circle this big (m)... */
+    joggerRadius: 5,
+    /** ...centered this far from center ice toward their own goal (m). */
+    joggerOffset: 2,
   },
 
   /** Health checks reported by the headless sim. */
@@ -439,6 +507,9 @@ export type SimConfig = Widen<typeof DEFAULT_CONFIG>;
 /** AI difficulty preset name (SPEC §7). */
 export type Difficulty = keyof SimConfig['ai']['levels'];
 export type AiLevel = SimConfig['ai']['levels'][Difficulty];
+/** Team playing style (M9). */
+export type AiStyle = keyof SimConfig['ai']['styles'];
+export type AiStyleTuning = SimConfig['ai']['styles'][AiStyle];
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 

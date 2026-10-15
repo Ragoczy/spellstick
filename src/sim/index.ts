@@ -11,6 +11,7 @@ export * from './rules';
 export * from './players';
 export * from './physics';
 export * from './roster';
+export * from './drills';
 export * from './loop';
 export * from './rng';
 export * from './hash';

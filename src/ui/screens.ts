@@ -1,11 +1,13 @@
 import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/changelog';
 import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
-import type { Difficulty } from '../sim';
+import { LESSONS, TRAINING_TEXT } from '../content/training';
+import { DRILLS, type Difficulty } from '../sim';
 import type { AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import type { TeamTally } from './matchStats';
 import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
+import { fillControls } from './training';
 
 /** Tiny DOM helper: element with attributes and children. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -37,6 +39,7 @@ function screen(id: string, ...content: (Node | string)[]): HTMLElement {
 
 export interface TitleActions {
   play(): void;
+  training(): void;
   controls(): void;
   settings(): void;
   report(): void;
@@ -44,20 +47,27 @@ export interface TitleActions {
   logout(): void;
 }
 
-/** Play only once logged in with Discord; until then the main button is the login. */
+/** Play (and Training) only once logged in with Discord; until then the main button is the login. */
 export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
-  const main =
-    auth.status === 'in' || auth.status === 'dev'
-      ? button('Play', a.play, 'btn primary')
-      : auth.status === 'checking'
-        ? el('button', { class: 'btn', type: 'button', disabled: '' }, 'Checking login…')
-        : button('Log in with Discord', a.login, 'btn primary discord');
+  const canPlay = auth.status === 'in' || auth.status === 'dev';
+  const main = canPlay
+    ? button('Play', a.play, 'btn primary')
+    : auth.status === 'checking'
+      ? el('button', { class: 'btn', type: 'button', disabled: '' }, 'Checking login…')
+      : button('Log in with Discord', a.login, 'btn primary discord');
   return screen(
     'title',
     el('h1', { class: 'title-logo' }, 'SPELLSTICK'),
     el('p', { class: 'tagline' }, 'Full-contact magical box lacrosse. Witches, sticks, and spells.'),
     accountLine(auth, a.logout),
-    el('div', { class: 'stack' }, main, button('Controls', a.controls), button('Settings', a.settings)),
+    el(
+      'div',
+      { class: 'stack' },
+      main,
+      ...(canPlay ? [button(TRAINING_TEXT.menuTitle, a.training)] : []),
+      button('Controls', a.controls),
+      button('Settings', a.settings),
+    ),
     whatsNew(CHANGELOG.slice(0, TITLE_CHANGELOG_ENTRIES)),
     el(
       'footer',
@@ -301,7 +311,7 @@ export function teamSelectScreen(
       'button',
       { class: 'choice', type: 'button', 'aria-pressed': 'false', 'data-team': id, 'data-side': side },
       el('span', { class: 'swatch', style: `background:${hex(t.color)}` }),
-      el('span', {}, t.name),
+      el('span', {}, t.name, el('small', {}, t.styleBlurb)),
     );
     b.addEventListener('click', () => {
       sel[side] = id;
@@ -410,7 +420,11 @@ export function controlsScreen(onDone: () => void, doneLabel = 'Got it'): HTMLEl
   );
 }
 
-export function pauseScreen(a: { resume(): void; controls(): void; quit(): void }): HTMLElement {
+/** Pause (Esc). In training it also offers to skip the lesson, and quitting leaves training. */
+export function pauseScreen(
+  a: { resume(): void; controls(): void; quit(): void; skip?: () => void },
+  quitLabel = 'Quit to title',
+): HTMLElement {
   return screen(
     'pause',
     el('h2', {}, 'Paused'),
@@ -418,8 +432,42 @@ export function pauseScreen(a: { resume(): void; controls(): void; quit(): void 
       'div',
       { class: 'stack' },
       button('Resume', a.resume, 'btn primary'),
+      ...(a.skip ? [button(TRAINING_TEXT.skip, a.skip)] : []),
       button('Controls', a.controls),
-      button('Quit to title', a.quit),
+      button(quitLabel, a.quit),
+    ),
+  );
+}
+
+/** The training ground's lessons (M9): start at the top, or pick one. */
+export function trainingScreen(a: { start(lesson: number): void; back(): void }): HTMLElement {
+  // Lesson titles name spells, never buttons, so the device doesn't matter here.
+  const title = (i: number) => `${i + 1}. ${fillControls(LESSONS[DRILLS[i]!].title, false)}`;
+  return screen(
+    'training',
+    el('h2', {}, TRAINING_TEXT.menuTitle),
+    el('p', { class: 'settings-note' }, TRAINING_TEXT.menuIntro),
+    el(
+      'div',
+      { class: 'stack' },
+      button(TRAINING_TEXT.startAll, () => a.start(0), 'btn primary'),
+      ...DRILLS.map((_, i) => button(title(i), () => a.start(i), 'btn lesson-pick')),
+      button('Back', a.back),
+    ),
+  );
+}
+
+/** After the last lesson. */
+export function trainingDoneScreen(a: { play(): void; menu(): void }): HTMLElement {
+  return screen(
+    'training-done',
+    el('h2', {}, TRAINING_TEXT.doneTitle),
+    el('p', {}, TRAINING_TEXT.doneText),
+    el(
+      'div',
+      { class: 'actions' },
+      button(TRAINING_TEXT.playMatch, a.play, 'btn primary'),
+      button('Main menu', a.menu),
     ),
   );
 }

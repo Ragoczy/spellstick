@@ -1,8 +1,9 @@
 import type Phaser from 'phaser';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId } from '../content/teams';
-import { MatchScene, SCENE_EVENTS, type MatchSetup } from '../render/MatchScene';
-import { makeConfig, type Difficulty, type MatchState, type SimEvent } from '../sim';
+import { MatchScene, SCENE_EVENTS, type DrillUpdate, type MatchSetup } from '../render/MatchScene';
+import { DRILLS, makeConfig, type Difficulty, type MatchState, type SimEvent } from '../sim';
 import { clipId } from '../content/announcer';
+import { TRAINING_TEXT } from '../content/training';
 import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
 import { LOGIN_URL, checkSession, logOut, takeLoginMessage, unlinkAccount, type AuthState } from './auth';
@@ -19,11 +20,18 @@ import {
   settingsScreen,
   teamSelectScreen,
   titleScreen,
+  trainingDoneScreen,
+  trainingScreen,
   unlinkScreen,
   type TeamSelection,
 } from './screens';
+import { LessonCard } from './training';
 
 const SELECTION_KEY = 'spellstick.selection';
+/** Training: a finished lesson stays on screen this long before the next one starts (ms). */
+const NEXT_LESSON_DELAY_MS = 1800;
+/** Training: how often the lesson card checks which device you're on, for its button names (ms). */
+const LESSON_DEVICE_CHECK_MS = 300;
 
 /**
  * The menu flow (SPEC §9): title → team select → (controls card, first time) → match →
@@ -49,12 +57,18 @@ export class App {
   private seenControls = false;
   private auth: AuthState = { status: 'checking' };
   private onTitle = false;
+  /** Training (M9): the lesson card, and the lesson running (an index into DRILLS), if any. */
+  private readonly lessonCard: LessonCard;
+  private lesson: number | null = null;
+  private lessonTimer = 0;
+  private lessonDeviceTimer = 0;
 
   constructor(private readonly game: Phaser.Game) {
     this.root = document.createElement('div');
     this.root.id = 'ui';
     document.body.append(this.root);
     this.announcer = new Announcer(this.root);
+    this.lessonCard = new LessonCard(this.root);
     this.muteButton = document.createElement('button');
     this.muteButton.id = 'mute';
     this.muteButton.type = 'button';
@@ -103,6 +117,7 @@ export class App {
     this.game.events.on(SCENE_EVENTS.matchOver, (state: MatchState, setup: MatchSetup) =>
       this.onMatchOver(state, setup),
     );
+    this.game.events.on(SCENE_EVENTS.drill, (u: DrillUpdate) => this.onDrill(u));
     this.showTitle();
   }
 
@@ -128,6 +143,7 @@ export class App {
   }
 
   showTitle(): void {
+    this.leaveTraining();
     this.inMatch = false;
     this.announcer.clear();
     this.voice.stop();
@@ -138,6 +154,7 @@ export class App {
       titleScreen(
         {
           play: this.click(() => this.showTeamSelect()),
+          training: this.click(() => this.showTraining()),
           login: this.click(() => window.location.assign(LOGIN_URL)),
           logout: this.click(() => void this.logout()),
           controls: this.click(() =>
@@ -239,6 +256,69 @@ export class App {
     );
   }
 
+  private showTraining(): void {
+    const back = this.click(() => this.showTitle());
+    this.show(
+      trainingScreen({
+        start: (lesson) => this.click(() => this.startLesson(lesson))(),
+        back,
+      }),
+      back,
+    );
+  }
+
+  /** Training (M9): runs one lesson's drill; the next starts when it's done. */
+  private startLesson(lesson: number): void {
+    this.show(null);
+    this.inMatch = true;
+    this.lesson = lesson;
+    window.clearTimeout(this.lessonTimer);
+    this.announcer.clear();
+    this.voice.stop();
+    window.clearInterval(this.lessonDeviceTimer);
+    this.lessonDeviceTimer = window.setInterval(
+      () => this.lessonCard.setPad(this.scene.usingPad),
+      LESSON_DEVICE_CHECK_MS,
+    );
+    // The drill reports its progress (and the card appears) as it starts.
+    this.scene.startMatch({ ...this.selection, mode: 'training', drill: DRILLS[lesson] });
+  }
+
+  private onDrill(u: DrillUpdate): void {
+    if (this.lesson === null) return;
+    this.lessonCard.show(u, this.scene.usingPad);
+    if (u.verdict?.kind === 'point') this.sfx.play('spell');
+    if (u.points >= u.target) {
+      window.clearTimeout(this.lessonTimer);
+      this.lessonTimer = window.setTimeout(() => this.nextLesson(), NEXT_LESSON_DELAY_MS);
+    }
+  }
+
+  private nextLesson(): void {
+    if (this.lesson === null) return;
+    if (this.lesson + 1 < DRILLS.length) {
+      this.startLesson(this.lesson + 1);
+      return;
+    }
+    this.leaveTraining();
+    this.inMatch = false;
+    this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
+    this.show(
+      trainingDoneScreen({
+        play: this.click(() => this.showTeamSelect()),
+        menu: this.click(() => this.showTitle()),
+      }),
+      this.click(() => this.showTitle()),
+    );
+  }
+
+  private leaveTraining(): void {
+    this.lesson = null;
+    window.clearTimeout(this.lessonTimer);
+    window.clearInterval(this.lessonDeviceTimer);
+    this.lessonCard.hide();
+  }
+
   private startMatch(): void {
     this.show(null);
     this.tally = emptyTally();
@@ -257,20 +337,30 @@ export class App {
   }
 
   private showPause(): void {
+    const training = this.lesson !== null;
     this.show(
-      pauseScreen({
-        resume: this.click(() => this.resume()),
-        controls: this.click(() =>
-          this.show(
-            controlsScreen(
+      pauseScreen(
+        {
+          resume: this.click(() => this.resume()),
+          controls: this.click(() =>
+            this.show(
+              controlsScreen(
+                this.click(() => this.showPause()),
+                'Back',
+              ),
               this.click(() => this.showPause()),
-              'Back',
             ),
-            this.click(() => this.showPause()),
           ),
-        ),
-        quit: this.click(() => this.showTitle()),
-      }),
+          quit: this.click(() => this.showTitle()),
+          skip: training
+            ? this.click(() => {
+                this.resume();
+                this.nextLesson();
+              })
+            : undefined,
+        },
+        training ? TRAINING_TEXT.quit : undefined,
+      ),
       this.click(() => this.resume()),
     );
   }
@@ -312,12 +402,14 @@ export class App {
   }
 
   private onSimEvents(events: SimEvent[], state: MatchState, setup: MatchSetup): void {
-    if (setup.mode !== 'play') return;
-    tallyEvents(this.tally, events);
+    if (setup.mode === 'demo') return;
     for (const e of events) {
       const sound = SOUND_FOR[e.type];
       if (sound) this.sfx.play(sound);
     }
+    // Training has sound (the faceoff whistle matters) but no stats or announcer.
+    if (setup.mode !== 'play') return;
+    tallyEvents(this.tally, events);
     // The player is always the home side (team 0).
     const callout = Announcer.classify(events, state, this.config, 0);
     if (callout) {

@@ -19,6 +19,9 @@ export const TEXT = {
   final: 'FINAL',
   finalOvertime: 'FINAL (OT)',
   shotClock: 'SHOT',
+  replay: 'REPLAY',
+  replaySkip: 'Click or press Space to skip',
+  replaySkipPad: 'Press A to skip',
 } as const;
 
 /** "1st", "2nd", ..., then "OT", "2OT", ... past regulation. */

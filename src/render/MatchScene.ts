@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createTeamControllers, type Controller } from '../ai';
+import { createDrillControllers, createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId, type TeamInfo } from '../content/teams';
 import { TEXT } from '../content/text';
 import {
@@ -7,15 +7,22 @@ import {
   arenaGeometry,
   chargeFraction,
   choosePassTarget,
+  createDrill,
   createMatch,
+  DRILL_TARGET,
+  drillConfig,
+  DrillJudge,
   facingDir,
   FixedStepper,
   makeConfig,
   matchRoster,
+  secondsToTicks,
   stepMatch,
   stickHead,
   tickSeconds,
   type Difficulty,
+  type DrillId,
+  type DrillVerdict,
   type InputCommand,
   type MatchState,
   type SimConfig,
@@ -27,6 +34,7 @@ import { BallView } from './BallView';
 import { Hud } from './Hud';
 import { PALETTE } from './palette';
 import { PlayerView } from './PlayerView';
+import { captureFrame, REPLAY, ReplayPlayback, ReplayRecorder, type ReplayStep } from './replay';
 import { RETRO, RetroWorld } from './retro';
 import { drawRink } from './RinkView';
 import { SpellBar } from './SpellBar';
@@ -35,14 +43,27 @@ import { WorldView } from './view';
 /** The human plays for this team (the left/home side). */
 const HUMAN_TEAM: TeamIndex = 0;
 
-/** What to play. `demo` is AI vs AI with no HUD callouts: the title-screen backdrop. */
+/**
+ * What to play. `demo` is AI vs AI with no HUD callouts: the title-screen backdrop.
+ * `training` runs one drill of the training ground (M9).
+ */
 export interface MatchSetup {
   home: TeamId;
   away: TeamId;
   /** The opponents' AI level; your AI teammates always play at Normal. */
   difficulty: Difficulty;
-  mode: 'play' | 'demo';
+  mode: 'play' | 'demo' | 'training';
+  /** The drill to run, in training. */
+  drill?: DrillId;
   seed?: number;
+}
+
+/** A training drill's progress, sent on SCENE_EVENTS.drill: at the start, and after every point or miss. */
+export interface DrillUpdate {
+  drill: DrillId;
+  points: number;
+  target: number;
+  verdict: DrillVerdict | null;
 }
 
 /** Events the scene emits on `game.events` for the DOM layer (src/ui). */
@@ -53,7 +74,12 @@ export const SCENE_EVENTS = {
   matchOver: 'match-over',
   /** () once the scene is built and can take startMatch(). */
   ready: 'match-scene-ready',
+  /** (update: DrillUpdate) in training. */
+  drill: 'drill',
 } as const;
+
+/** Where a player stood (and pointed) when a visual effect fired: live, or in a replay frame. */
+type Where = (playerId: number) => { x: number; y: number; facing: number };
 
 interface Snapshot {
   players: { x: number; y: number }[];
@@ -62,6 +88,8 @@ interface Snapshot {
 
 /** Renders a match from sim state and feeds it human and AI input. Holds no game rules of its own. */
 export class MatchScene extends Phaser.Scene {
+  /** The match rules; `config` is this, or the drill version of it in training. */
+  private baseConfig!: SimConfig;
   private config!: SimConfig;
   private state!: MatchState;
   private setup!: MatchSetup;
@@ -84,6 +112,23 @@ export class MatchScene extends Phaser.Scene {
   private teams!: [TeamInfo, TeamInfo];
   private demoSeed = 1000;
   private overSent = false;
+  /** Goal replays (M9): recent frames, a goal waiting to be replayed, and the replay showing. */
+  private recorder!: ReplayRecorder;
+  private pendingReplay: { goalTick: number; startAt: number } | null = null;
+  private replay: ReplayPlayback | null = null;
+  private skipRequested = false;
+  /** The training drill running (M9), if any. */
+  private training: {
+    drill: DrillId;
+    judge: DrillJudge;
+    points: number;
+    seed: number;
+    /** Set-ups so far: each one rolls fresh dice, so retrying the same shot isn't the same shot. */
+    attempts: number;
+    /** Sim tick to set the drill up again at, after a point or a miss. */
+    resetAt: number | null;
+    done: boolean;
+  } | null = null;
   /** While paused the sim doesn't advance (SPEC §5: Esc). */
   paused = false;
   /** Running tally of sim events, for the debug handle (tests, console). */
@@ -94,10 +139,15 @@ export class MatchScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.config = makeConfig();
+    this.baseConfig = makeConfig();
+    this.config = this.baseConfig;
     this.view = new WorldView(arenaGeometry(this.config));
     this.input_ = new HumanInput(this, this.view);
-    this.input_.onSwitch = () => this.switchPlayer();
+    // Space: switch player, or skip a replay.
+    this.input_.onSwitch = () => (this.replay ? (this.skipRequested = true) : this.switchPlayer());
+    this.recorder = new ReplayRecorder(
+      secondsToTicks(REPLAY.leadSeconds + REPLAY.delaySeconds, this.config) + this.config.tickHz,
+    );
     this.teams = [TEAMS[DEFAULT_HOME], TEAMS[DEFAULT_AWAY]];
     this.hud = new Hud(this, this.config, this.teams);
     this.spellBar = new SpellBar(this, this.config);
@@ -107,18 +157,26 @@ export class MatchScene extends Phaser.Scene {
       this.retro.capture();
     }
     this.wardFx = this.add.graphics().setDepth(12);
+    this.stepper = new FixedStepper(
+      () => this.tick(),
+      tickSeconds(this.config),
+      this.config.maxStepsPerFrame,
+    );
     this.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
     exposeDebugHandle(this);
     this.game.events.emit(SCENE_EVENTS.ready);
   }
 
-  /** Starts a fresh match (or demo) with the given teams and difficulty. */
+  /** Starts a fresh match (or demo, or training drill) with the given teams and difficulty. */
   startMatch(setup: MatchSetup): void {
     this.setup = setup;
+    const training = setup.mode === 'training';
+    this.config = training ? drillConfig(this.baseConfig) : this.baseConfig;
     this.paused = false;
     this.overSent = false;
-    for (const v of this.playerViews) v.destroy();
-    this.ballView?.destroy();
+    this.recorder.clear();
+    this.pendingReplay = null;
+    if (this.replay) this.endReplay();
     this.rink?.destroy();
 
     this.teams = [TEAMS[setup.home], TEAMS[setup.away]];
@@ -130,33 +188,105 @@ export class MatchScene extends Phaser.Scene {
     this.hud.setTeams(this.teams);
     const demo = setup.mode === 'demo';
     this.hud.setOverlaysEnabled(!demo);
+    this.hud.setScoreboardVisible(!training);
     this.spellBar.setVisible(!demo);
 
     const seed = setup.seed ?? (demo ? this.demoSeed++ : Math.floor(Math.random() * 1e9));
-    this.state = createMatch(this.config, seed, matchRoster(this.config), { start: 'faceoff' });
+    if (training) {
+      const drill = setup.drill ?? 'scoop';
+      this.training = {
+        drill,
+        judge: new DrillJudge(drill),
+        points: 0,
+        seed,
+        attempts: 0,
+        resetAt: null,
+        done: false,
+      };
+      this.loadDrill();
+      this.emitDrill(null);
+      return;
+    }
+    this.training = null;
+    const state = createMatch(this.config, seed, matchRoster(this.config), { start: 'faceoff' });
     const levels: [Difficulty, Difficulty] = demo ? ['normal', 'normal'] : ['normal', setup.difficulty];
-    this.controllers = createTeamControllers(this.state, this.config, seed, levels);
-    this.prev = snapshot(this.state);
-    this.stepper = new FixedStepper(
-      () => this.tick(),
-      tickSeconds(this.config),
-      this.config.maxStepsPerFrame,
+    this.loadState(
+      state,
+      createTeamControllers(state, this.config, seed, levels, [this.teams[0].style, this.teams[1].style]),
     );
-    this.playerViews = this.state.players.map(
+    this.controlledId = -1;
+    this.onFaceoffSet();
+  }
+
+  /** Puts a fresh match state on the floor: its controllers, and a view for every player. */
+  private loadState(state: MatchState, controllers: Controller[]): void {
+    for (const v of this.playerViews) v.destroy();
+    this.ballView?.destroy();
+    this.state = state;
+    this.controllers = controllers;
+    this.prev = snapshot(state);
+    this.playerViews = state.players.map(
       (p) => new PlayerView(this, this.view, this.config, p, this.teams[p.team].color),
     );
     this.ballView = new BallView(this, this.view, this.config);
     this.ballView.setDepth(10);
-    this.controlledId = -1;
-    this.onFaceoffSet();
+  }
+
+  /** Sets the current training drill up (again), for the points scored so far. */
+  private loadDrill(): void {
+    const t = this.training!;
+    const seed = t.seed + t.attempts++ * 7919;
+    const drill = createDrill(this.config, t.drill, t.points, seed);
+    t.judge = new DrillJudge(t.drill);
+    this.loadState(drill.state, createDrillControllers(drill, this.config, seed));
+    this.controlledId = drill.humanId;
+    if (drill.state.phase === 'faceoff') this.onFaceoffSet();
+  }
+
+  /** Scores the drill after a tick; after a point or a miss, sets it up again a moment later. */
+  private judgeDrill(): void {
+    const t = this.training!;
+    if (t.resetAt !== null) {
+      if (this.state.tick >= t.resetAt) {
+        t.resetAt = null;
+        this.loadDrill();
+      }
+      return;
+    }
+    if (t.done) return;
+    const v = t.judge.observe(this.state, this.controlledId);
+    if (!v) return;
+    if (v.kind === 'point') t.points++;
+    t.done = t.points >= DRILL_TARGET[t.drill];
+    if (!t.done && (v.kind === 'miss' || v.reset)) {
+      t.resetAt = this.state.tick + secondsToTicks(this.config.training.resetSeconds, this.config);
+    }
+    this.emitDrill(v);
+  }
+
+  private emitDrill(verdict: DrillVerdict | null): void {
+    const t = this.training!;
+    const update: DrillUpdate = { drill: t.drill, points: t.points, target: DRILL_TARGET[t.drill], verdict };
+    this.game.events.emit(SCENE_EVENTS.drill, update);
   }
 
   private get playing(): boolean {
     return this.setup.mode === 'play';
   }
 
-  /** One fixed sim tick. */
-  private tick(): void {
+  /** A person is at the controls: a real match or training. */
+  private get humanPlays(): boolean {
+    return this.setup.mode !== 'demo';
+  }
+
+  /** The player last touched the gamepad (rather than the keyboard or mouse). */
+  get usingPad(): boolean {
+    return this.input_.usingPad;
+  }
+
+  /** One fixed sim tick. `autopilot` (tests only) puts the human's player on AI too. */
+  private tick(autopilot = false): void {
+    if (this.replay) return; // the sim waits while a goal replay shows
     if (isOver(this.state)) {
       this.input_.consumePresses();
       this.finish();
@@ -165,7 +295,7 @@ export class MatchScene extends Phaser.Scene {
     this.prev = snapshot(this.state);
     const inputs: InputCommand[] = [];
     for (const p of this.state.players) {
-      if (p.id === this.controlledId) {
+      if (p.id === this.controlledId && !autopilot) {
         // The goal this player attacks is the one the other team defends.
         inputs[p.id] = this.input_.command(p.pos, arenaFor(this.config).goals[p.team === 0 ? 1 : 0]);
       } else {
@@ -173,18 +303,26 @@ export class MatchScene extends Phaser.Scene {
       }
     }
     stepMatch(this.state, inputs, this.config);
-    this.input_.consumePresses();
+    if (!autopilot) this.input_.consumePresses();
     for (const e of this.state.events) this.onEvent(e);
+    if (this.playing) {
+      this.recorder.record(
+        captureFrame(this.state, (id) => chargeFraction(this.state.players[id]!.primaryTicks, this.config)),
+      );
+      if (this.pendingReplay && this.state.tick >= this.pendingReplay.startAt) this.startReplay();
+    }
     if (this.state.events.length > 0) {
       this.game.events.emit(SCENE_EVENTS.simEvents, this.state.events, this.state, this.setup);
     }
 
     // Control follows the ball when our team gets it (SPEC §5).
-    if (this.playing) {
+    if (this.humanPlays) {
       const carrier =
         this.state.ball.carrier !== null ? this.state.players[this.state.ball.carrier] : undefined;
       if (carrier && carrier.team === HUMAN_TEAM && carrier.role === 'runner') this.controlledId = carrier.id;
     }
+
+    if (this.training) this.judgeDrill();
 
     // stepMatch may have just ended the match.
     if (isOver(this.state)) this.finish();
@@ -192,7 +330,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Final whistle: tell the UI once (it shows results); a demo just starts another match. */
   private finish(): void {
-    if (!this.playing) {
+    if (this.setup.mode === 'demo') {
       this.startMatch({ ...this.setup, seed: undefined });
     } else if (!this.overSent) {
       this.overSent = true;
@@ -216,6 +354,10 @@ export class MatchScene extends Phaser.Scene {
         break;
       case 'goal':
         this.hud.flash(TEXT.goal, 2000, this.teams[e.team].color);
+        if (this.playing) {
+          const t = this.state.tick;
+          this.pendingReplay = { goalTick: t, startAt: t + secondsToTicks(REPLAY.delaySeconds, this.config) };
+        }
         break;
       case 'goalDisallowed':
         this.hud.flash(TEXT.goalDisallowed, 1600, PALETTE.text);
@@ -230,29 +372,109 @@ export class MatchScene extends Phaser.Scene {
         if (e.overtime) this.hud.flash(TEXT.overtime, 2200);
         break;
       case 'check':
-        this.hitFlash(this.state.players[e.targetId]!.pos, e.loosened);
-        break;
       case 'checkBounce':
-        this.hitFlash(this.state.players[e.playerId]!.pos, false);
-        break;
       case 'hexShove':
-        this.shoveFlash(this.state.players[e.playerId]!);
-        break;
       case 'cast':
-        if (e.spell !== 'hexShove') this.castPulse(this.state.players[e.playerId]!.pos);
-        break;
       case 'wardBlock':
-        this.castPulse(this.state.players[e.goalieId]!.pos, 2.5);
+        this.effect(e, (id) => {
+          const p = this.state.players[id]!;
+          return { x: p.pos.x, y: p.pos.y, facing: p.facing };
+        });
         break;
       case 'boardSlam':
-        if (this.playing) this.cameras.main.shake(120, 0.004);
+        if (this.humanPlays) this.cameras.main.shake(120, 0.004);
         break;
     }
   }
 
+  /** The flash for a hit or a spell, live or in a replay. */
+  private effect(e: SimEvent, at: Where): void {
+    switch (e.type) {
+      case 'check':
+        this.hitFlash(at(e.targetId), e.loosened);
+        break;
+      case 'checkBounce':
+        this.hitFlash(at(e.playerId), false);
+        break;
+      case 'hexShove':
+        this.shoveFlash(at(e.playerId));
+        break;
+      case 'cast':
+        if (e.spell !== 'hexShove') this.castPulse(at(e.playerId));
+        break;
+      case 'wardBlock':
+        this.castPulse(at(e.goalieId), 2.5);
+        break;
+    }
+  }
+
+  /** Cuts to the replay of the goal just scored (M9). The sim waits until it ends. */
+  private startReplay(): void {
+    const p = this.pendingReplay!;
+    this.pendingReplay = null;
+    const frames = this.recorder.clip(
+      p.goalTick - secondsToTicks(REPLAY.leadSeconds, this.config),
+      p.goalTick + secondsToTicks(REPLAY.tailSeconds, this.config),
+    );
+    if (frames.length < 2) return;
+    this.replay = new ReplayPlayback(frames, this.config.tickHz);
+    this.skipRequested = false;
+    this.hud.setReplay(true, this.input_.usingPad ? TEXT.replaySkipPad : TEXT.replaySkip);
+    this.spellBar.setVisible(false);
+  }
+
+  private endReplay(): void {
+    this.replay = null;
+    this.skipRequested = false;
+    this.hud.setReplay(false);
+    this.spellBar.setVisible(this.playing);
+  }
+
+  /** One rendered frame of a replay: advance it, or end it when it's done or skipped. */
+  private updateReplay(dt: number): void {
+    const replay = this.replay!;
+    const skip = this.input_.pollReplaySkip() || this.skipRequested;
+    this.skipRequested = false;
+    // Paused: hold the frame (the pause menu has the input).
+    if (this.paused) return;
+    const step = skip ? null : replay.advance(dt);
+    if (!step) {
+      this.endReplay();
+      return;
+    }
+    this.drawReplay(step);
+  }
+
+  private drawReplay(step: ReplayStep): void {
+    const { from, to, alpha } = step;
+    const lerp = (a: number, b: number) => a + (b - a) * alpha;
+    this.playerViews.forEach((view, i) => {
+      const a = from.players[i];
+      const b = to.players[i];
+      if (!a || !b) return;
+      view.update({
+        x: lerp(a.x, b.x),
+        y: lerp(a.y, b.y),
+        facing: alpha < 0.5 ? a.facing : b.facing,
+        controlled: false,
+        charge: b.charge,
+        passTarget: false,
+        staggered: b.staggered,
+        checkReady: true,
+        quickstep: b.quickstep,
+        bentArmed: b.bentArmed,
+      });
+    });
+    this.ballView.update(lerp(from.ball.x, to.ball.x), lerp(from.ball.y, to.ball.y), to.ball);
+    step.fired.forEach((e, k) => this.effect(e, (id) => step.firedFrames[k]!.players[id]!));
+    this.drawWards(to.wards);
+    this.hud.update(this.state);
+    this.retro?.render();
+  }
+
   /** At every faceoff you take the draw yourself (SPEC §4.1). */
   private onFaceoffSet(): void {
-    if (!this.playing) return;
+    if (!this.humanPlays) return;
     const f = this.state.faceoff;
     if (f) {
       this.controlledId = f.takers[HUMAN_TEAM];
@@ -273,7 +495,7 @@ export class MatchScene extends Phaser.Scene {
    */
   private switchPlayer(): void {
     const s = this.state;
-    if (!this.playing || this.paused || s.phase === 'faceoff') return;
+    if (!this.humanPlays || this.paused || s.phase === 'faceoff') return;
     const carrier = s.ball.carrier !== null ? s.players[s.ball.carrier] : undefined;
     if (carrier && carrier.team === HUMAN_TEAM) return;
     const mates = s.players
@@ -288,14 +510,14 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /** Hex Shove: a gold cone that flares out from the caster's stick and fades. */
-  private shoveFlash(caster: { pos: { x: number; y: number }; facing: number }): void {
+  private shoveFlash(caster: { x: number; y: number; facing: number }): void {
     const hs = this.config.spells.hexShove;
     const half = (hs.coneHalfAngleDeg * Math.PI) / 180;
     const g = this.add.graphics().setDepth(19);
     g.fillStyle(PALETTE.mana, 0.45);
     g.slice(
-      this.view.x(caster.pos.x),
-      this.view.y(caster.pos.y),
+      this.view.x(caster.x),
+      this.view.y(caster.y),
       this.view.len(hs.range),
       caster.facing - half,
       caster.facing + half,
@@ -323,8 +545,12 @@ export class MatchScene extends Phaser.Scene {
   }
 
   override update(_time: number, deltaMs: number): void {
+    if (this.replay) {
+      this.updateReplay(deltaMs / 1000);
+      return;
+    }
     // Paused: keep drawing, don't advance (and drop any presses made while paused).
-    this.input_.pollPad(!this.paused && this.playing);
+    this.input_.pollPad(!this.paused && this.humanPlays);
     const alpha = this.paused ? 1 : this.stepper.advance(deltaMs / 1000);
     if (this.paused) this.input_.consumePresses();
     const s = this.state;
@@ -355,7 +581,7 @@ export class MatchScene extends Phaser.Scene {
     this.hud.update(s);
     this.spellBar.showPadLabels(this.input_.usingPad);
     this.spellBar.update(me);
-    this.drawWards(s);
+    this.drawWards(s.players.filter((p) => p.role === 'goalie' && p.wardTicks > 0).map((p) => p.id));
     this.retro?.render();
   }
 
@@ -371,10 +597,30 @@ export class MatchScene extends Phaser.Scene {
     this.prev = snapshot(this.state);
   }
 
-  private drawWards(s: Readonly<MatchState>): void {
+  /**
+   * Debug/test only: play on with every player on AI, through the normal tick (so goals
+   * are recorded), until a goal replay starts. Lets the screenshot test see a replay.
+   */
+  fastForwardToReplay(maxTicks = 200_000): boolean {
+    for (let i = 0; i < maxTicks && !this.replay && !isOver(this.state); i++) this.tick(true);
+    return this.replay !== null;
+  }
+
+  get replaying(): boolean {
+    return this.replay !== null;
+  }
+
+  /** Debug/test only: the training drill's progress. */
+  get trainingStatus(): { drill: DrillId; points: number; done: boolean } | null {
+    const t = this.training;
+    return t ? { drill: t.drill, points: t.points, done: t.done } : null;
+  }
+
+  /** Gold shields across the goal mouths of these goalies (their Ward is up). */
+  private drawWards(goalieIds: readonly number[]): void {
     const g = this.wardFx.clear();
-    for (const p of s.players) {
-      if (p.role !== 'goalie' || p.wardTicks <= 0) continue;
+    for (const id of goalieIds) {
+      const p = this.state.players[id]!;
       const goal = arenaGeometry(this.config).goals[p.team];
       const x = this.view.x(goal.mouth.x);
       const half = this.view.len(goal.width / 2 + 0.2);
@@ -419,7 +665,14 @@ function exposeDebugHandle(scene: MatchScene): void {
     get setup() {
       return scene.matchSetup;
     },
+    get replaying() {
+      return scene.replaying;
+    },
+    get training() {
+      return scene.trainingStatus;
+    },
     fastForwardTo: (phase: MatchState['phase']) => scene.fastForwardTo(phase),
+    fastForwardToReplay: () => scene.fastForwardToReplay(),
   };
 }
 

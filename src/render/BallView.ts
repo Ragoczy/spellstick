@@ -1,8 +1,14 @@
 import Phaser from 'phaser';
-import type { Ball, SimConfig } from '../sim';
+import type { Flight, SimConfig, Vec2 } from '../sim';
 import { PALETTE } from './palette';
 import { PIX, RETRO } from './retro';
 import type { WorldView } from './view';
+
+/** What the ball view needs besides position: a live sim ball, or a replay frame's. */
+export interface BallDrawState {
+  vel: Vec2;
+  flight: Pick<Flight, 'kind' | 'spin'> | null;
+}
 
 /** Drawn larger than the sim ball so it reads at this zoom. */
 const VISUAL_RADIUS_M = 0.22;
@@ -30,7 +36,7 @@ export class BallView {
   }
 
   /** Gold glow while in flight (SPEC §8); hard shots glow bigger and brighter. */
-  update(x: number, y: number, ball: Ball): void {
+  update(x: number, y: number, ball: BallDrawState): void {
     const sx = this.view.x(x);
     const sy = this.view.y(y);
     this.dot.setPosition(sx, sy);

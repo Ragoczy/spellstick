@@ -110,6 +110,25 @@ export class HumanInput {
     };
   }
 
+  /**
+   * During a goal replay (M9), instead of pollPad: reads the pad without feeding the sim and
+   * says whether the player pressed pass/shoot (click, A, or RT) to skip. (Space reaches the
+   * scene through onSwitch.) Every other press is dropped, and anything still held stays
+   * ignored until let go, so the press that skipped can't jump the next faceoff.
+   */
+  pollReplaySkip(): boolean {
+    this.pad.poll();
+    if (this.pad.active) this.usingPad = true;
+    const skip = this.pendingPrimary || this.pad.anyPressed(PAD_BINDINGS.primary);
+    this.pad.latch();
+    this.padLive = false;
+    this.pendingDrop = false;
+    this.pendingPrimary = false;
+    this.pendingCheck = false;
+    this.castQueue = [];
+    return skip;
+  }
+
   /** Call after a sim tick consumed the command, so presses fire once. */
   consumePresses(): void {
     this.pendingDrop = false;

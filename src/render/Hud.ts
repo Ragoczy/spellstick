@@ -14,6 +14,7 @@ const SHOT_CLOCK_WARN_SECONDS = 10;
  * and the period-break / final overlays. Reads sim state only.
  */
 export class Hud {
+  private readonly logo: Phaser.GameObjects.Text;
   private readonly scores: [Phaser.GameObjects.Text, Phaser.GameObjects.Text];
   private readonly period: Phaser.GameObjects.Text;
   private readonly shotBox: Phaser.GameObjects.Rectangle;
@@ -24,6 +25,9 @@ export class Hud {
   private readonly overlayTitle: Phaser.GameObjects.Text;
   private readonly overlayScore: Phaser.GameObjects.Text;
   private readonly overlayHint: Phaser.GameObjects.Text;
+  private readonly replayTag: Phaser.GameObjects.Text;
+  private readonly replayHint: Phaser.GameObjects.Text;
+  private scoreboard = true;
   private bannerUntil = 0;
   private subUntil = 0;
   private shotKey = '';
@@ -36,7 +40,7 @@ export class Hud {
     private teams: [TeamInfo, TeamInfo],
   ) {
     const serif = 'Georgia, serif';
-    scene.add
+    this.logo = scene.add
       .text(24, 30, 'SPELLSTICK', { fontFamily: serif, fontSize: '20px', color: toCss(PALETTE.mana) })
       .setOrigin(0, 0.5);
     const name = (t: TeamInfo) => ({ fontFamily: serif, fontSize: '22px', color: toCss(t.color) });
@@ -100,6 +104,47 @@ export class Hud {
       .container(0, 0, [panel, this.overlayTitle, this.overlayScore, this.overlayHint])
       .setDepth(200)
       .setVisible(false);
+
+    // Goal replays (M9): a tag on the top boards and how to skip, under the rink.
+    this.replayTag = scene.add
+      .text(CX, 112, `● ${TEXT.replay}`, { ...shout, fontSize: '30px', strokeThickness: 5 })
+      .setOrigin(0.5)
+      .setDepth(150)
+      .setVisible(false);
+    this.replayHint = scene.add
+      .text(CX, CANVAS_HEIGHT - 32, '', {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: '16px',
+        color: toCss(PALETTE.text),
+        stroke: '#000000',
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(150)
+      .setVisible(false);
+  }
+
+  /** Shows or hides the replay tag; `hint` says how to skip. */
+  setReplay(on: boolean, hint = ''): void {
+    this.replayTag.setVisible(on);
+    this.replayHint.setVisible(on).setText(hint);
+    if (on) {
+      // The replay owns the screen: clear the live GOAL! banner.
+      this.banner.setText('');
+      this.sub.setText('');
+      this.bannerUntil = 0;
+      this.subUntil = 0;
+    }
+  }
+
+  /** Training (M9) has no score or clocks: hides the scoreboard (and the logo, under the lesson card). */
+  setScoreboardVisible(on: boolean): void {
+    this.scoreboard = on;
+    for (const o of [this.logo, ...this.names, ...this.scores, this.period]) o.setVisible(on);
+    if (!on) {
+      this.shotBox.setVisible(false);
+      this.shotText.setVisible(false);
+    }
   }
 
   /** Switches the scoreboard to a new pair of teams. */
@@ -134,7 +179,7 @@ export class Hud {
     this.period.setText(`${label}  ${formatClock(s.periodTicksLeft / this.config.tickHz)}`);
 
     const sc = s.shotClock;
-    const showShot = sc.team !== null && (s.phase === 'live' || s.phase === 'goalPause');
+    const showShot = this.scoreboard && sc.team !== null && (s.phase === 'live' || s.phase === 'goalPause');
     this.shotBox.setVisible(showShot);
     this.shotText.setVisible(showShot);
     if (showShot && sc.team !== null) {

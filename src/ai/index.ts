@@ -14,4 +14,5 @@ export const idleController: Controller = {
 
 export { createGoalieAI } from './goalie';
 export { createRunnerAI } from './runner';
-export { createTeamControllers } from './team';
+export { createTeamControllers, styledAi } from './team';
+export { createDrillControllers } from './drills';

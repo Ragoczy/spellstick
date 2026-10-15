@@ -103,13 +103,8 @@ async function press(page: Page, b: Button) {
 
 const focusedText = (page: Page) => page.evaluate(() => document.activeElement?.textContent ?? '');
 
-test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, shoot, results', async ({
-  page,
-}) => {
-  test.setTimeout(240_000);
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-
+/** Replaces the browser's Gamepad API with a fake standard-mapping pad (unplugged until the test plugs it in). */
+async function installFakePad(page: Page) {
   await page.addInitScript(() => {
     const pad: FakePad = {
       plugged: false,
@@ -132,6 +127,16 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
       ],
     });
   });
+}
+
+test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, shoot, results', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await installFakePad(page);
   await mockLoggedIn(page);
   await page.goto('./');
   await page.evaluate(() => localStorage.clear());
@@ -145,8 +150,16 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
   await page.evaluate(() => ((window as unknown as { __pad: FakePad }).__pad.plugged = true));
   await expect(page.locator('#pad-toast')).toHaveText('Controller connected');
 
-  // Title: D-pad down to Controls, A opens it, B comes back.
+  // Title: D-pad down to Training (A opens it, B comes back), then on to Controls.
   expect(await focusedText(page)).toBe('Play');
+  await press(page, 'DOWN');
+  expect(await focusedText(page)).toBe('Training');
+  await press(page, 'A');
+  await expect(page.getByRole('heading', { name: 'Training' })).toBeVisible();
+  expect(await focusedText(page)).toBe('Start training');
+  await press(page, 'B');
+  await expect(page.getByRole('heading', { name: 'SPELLSTICK' })).toBeVisible();
+  await press(page, 'DOWN');
   await press(page, 'DOWN');
   expect(await focusedText(page)).toBe('Controls');
   await press(page, 'A');
@@ -269,5 +282,77 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
   await press(page, 'A');
   await expect(page.getByRole('heading', { name: 'SPELLSTICK' })).toBeVisible();
 
+  expect(errors).toEqual([]);
+});
+
+test('training on a gamepad: pad buttons on the card, the stick scoops, Start skips, A wins faceoffs', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await installFakePad(page);
+  await mockLoggedIn(page);
+  await page.goto('./');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(
+    () => (window as unknown as { __spellstick?: unknown }).__spellstick !== undefined,
+  );
+  await page.evaluate(() => ((window as unknown as { __pad: FakePad }).__pad.plugged = true));
+  await expect(page.locator('#pad-toast')).toHaveText('Controller connected');
+
+  // Title → Training → Start training, all on the pad.
+  expect(await focusedText(page)).toBe('Play');
+  await press(page, 'DOWN');
+  await press(page, 'A');
+  expect(await focusedText(page)).toBe('Start training');
+  await press(page, 'A');
+  const card = page.locator('#lesson');
+  await expect(card).toContainText('Run and scoop');
+
+  // The left stick runs to each loose ball; the card names pad controls.
+  const training = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __spellstick: { training: { points: number; done: boolean } | null } })
+          .__spellstick.training,
+    );
+  const end = Date.now() + 60_000;
+  while (!(await training())?.done && Date.now() < end) {
+    const d = await debug(page);
+    const me = d.state.players[d.controlledId]!;
+    const dx = d.state.ball.pos.x - me.pos.x;
+    const dy = d.state.ball.pos.y - me.pos.y;
+    const len = Math.hypot(dx, dy) || 1;
+    await setAxes(page, [dx / len, dy / len, 0, 0]);
+    await page.waitForTimeout(60);
+  }
+  await setAxes(page, [0, 0, 0, 0]);
+  expect((await training())?.done).toBe(true);
+  await expect(card).toContainText('the left stick');
+
+  // Start → Skip lesson through lessons 2–6: on to the faceoff lesson.
+  for (const n of [2, 3, 4, 5, 6]) {
+    await expect(card).toContainText(`Lesson ${n} of 7`, { timeout: 10_000 });
+    await press(page, 'START');
+    await expect(page.getByRole('heading', { name: 'Paused' })).toBeVisible();
+    await press(page, 'DOWN');
+    expect(await focusedText(page)).toBe('Skip lesson');
+    await press(page, 'A');
+  }
+  await expect(card).toContainText('Lesson 7 of 7');
+  await expect(card).toContainText('RT or A');
+
+  // A the moment the whistle blows, twice.
+  const foEnd = Date.now() + 60_000;
+  while (!(await training())?.done && Date.now() < foEnd) {
+    const d = await debug(page);
+    const whistled = (d.state.faceoff as { whistled?: boolean } | null)?.whistled === true;
+    if (d.state.phase === 'faceoff' && whistled) await press(page, 'A');
+    else await page.waitForTimeout(16);
+  }
+  expect((await training())?.done).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Training complete' })).toBeVisible({ timeout: 10_000 });
   expect(errors).toEqual([]);
 });

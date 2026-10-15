@@ -6,7 +6,7 @@ import type { Lean, RosterEntry } from './types';
 const RUNNER_NUMBERS = [7, 12, 18, 22, 33, 41];
 
 /** Where a team's goalie starts: just in front of the goal mouth. */
-function goaliePos(config: SimConfig, team: TeamIndex) {
+export function goaliePos(config: SimConfig, team: TeamIndex) {
   const goal = arenaGeometry(config).goals[team];
   return { x: goal.mouth.x - goal.backDir * 1.0, y: goal.mouth.y };
 }

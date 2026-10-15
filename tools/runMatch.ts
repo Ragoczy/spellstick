@@ -3,6 +3,7 @@ import {
   createMatch,
   matchRoster,
   stepMatch,
+  type AiStyle,
   type Difficulty,
   type InputCommand,
   type SimConfig,
@@ -16,9 +17,10 @@ export function runMatch(
   config: SimConfig,
   seed: number,
   levels: [Difficulty, Difficulty] = ['normal', 'normal'],
+  styles: [AiStyle, AiStyle] = ['balanced', 'balanced'],
 ): MatchStats {
   const state = createMatch(config, seed, matchRoster(config), { start: 'faceoff' });
-  const controllers = createTeamControllers(state, config, seed, levels);
+  const controllers = createTeamControllers(state, config, seed, levels, styles);
   const stats = emptyMatchStats();
 
   const stuck = new StuckTracker(config);
@@ -46,14 +48,19 @@ export function runMatch(
           break;
         case 'pass':
           stats.passes++;
+          stats.teams[e.team].passes++;
           break;
         case 'catch':
           if (e.intercepted) stats.interceptions++;
-          else stats.completions++;
+          else {
+            stats.completions++;
+            stats.teams[e.team].completions++;
+          }
           gain(e.team);
           break;
         case 'shot':
           stats.shots++;
+          stats.teams[e.team].shots++;
           stats.longestNoShotTicks = Math.max(stats.longestNoShotTicks, liveTicksSinceShot);
           liveTicksSinceShot = 0;
           break;
@@ -69,6 +76,7 @@ export function runMatch(
           break;
         case 'check':
           stats.checks++;
+          stats.teams[e.team].checks++;
           if (e.loosened) stats.checksLoosened++;
           break;
         case 'boardSlam':
@@ -95,6 +103,7 @@ export function runMatch(
           break;
         case 'cast':
           stats.spellCasts[e.spell] = (stats.spellCasts[e.spell] ?? 0) + 1;
+          stats.teams[e.team].casts++;
           break;
         case 'wardBlock':
           stats.wardBlocks++;
@@ -112,6 +121,8 @@ export function runMatch(
   stats.longestNoShotTicks = Math.max(stats.longestNoShotTicks, liveTicksSinceShot);
   stats.ticks = state.tick;
   stats.score = [state.score[0], state.score[1]];
+  stats.teams[0].goals = state.score[0];
+  stats.teams[1].goals = state.score[1];
   stats.stuckPlayerIncidents = stuck.incidents;
   return stats;
 }

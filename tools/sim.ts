@@ -1,43 +1,84 @@
 /**
  * Headless AI-vs-AI match runner.
  *
- *   npm run sim -- --games 1000 --seed 1 [--workers 8] [--home-level normal] [--away-level hard] [--strict]
+ *   npm run sim -- --games 1000 --seed 1 [--workers 8] [--home-level normal] [--away-level hard]
+ *                  [--home-style physical] [--away-style passing] [--strict]
+ *   npm run sim -- --style-matrix --games 200 --seed 1 [--strict]
  *
  * Runs matches with no renderer and prints a stats report. Each match depends only on
  * its seed, so games are split across worker threads and the results are identical to
  * a single-threaded run. `--strict` exits non-zero if a balance threshold from CLAUDE.md
- * is broken (hard failures from M6 on).
+ * is broken (hard failures from M6 on). `--style-matrix` plays every pairing of two
+ * different team styles (M9), `--games` each way, and reports each style's record and
+ * per-team stats; with `--strict` it fails if a style is the obvious pick.
  */
 import { availableParallelism } from 'node:os';
 import { parseArgs } from 'node:util';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
-import { makeConfig, type Difficulty } from '../src/sim';
+import { makeConfig, type AiStyle, type Difficulty } from '../src/sim';
 import {
   balanceWarnings,
   createReport,
   formatReport,
+  formatStyleTable,
   mergeReports,
   recordMatch,
+  recordStyleMatchup,
+  styleWarnings,
   type Report,
+  type StyleTable,
 } from './report';
 import { runMatch } from './runMatch';
 
-interface Job {
-  seeds: number[];
+/** One match to play: its seed and each side's difficulty and style. */
+interface Task {
+  seed: number;
   levels: [Difficulty, Difficulty];
+  styles: [AiStyle, AiStyle];
 }
 
-function runSeeds(job: Job): Report {
+const pairingKey = (t: Task) => t.styles.join(' vs ');
+
+/** Plays the tasks and returns one report per style pairing. */
+function runTasks(tasks: readonly Task[]): Record<string, Report> {
   const config = makeConfig();
-  const report = createReport();
-  for (const seed of job.seeds) recordMatch(report, runMatch(config, seed, job.levels));
-  return report;
+  const out: Record<string, Report> = {};
+  for (const t of tasks) {
+    const report = (out[pairingKey(t)] ??= createReport());
+    recordMatch(report, runMatch(config, t.seed, t.levels, t.styles));
+  }
+  return out;
+}
+
+/** Runs the tasks across `workers` threads (or inline for one) and merges the reports per pairing. */
+async function runParallel(tasks: readonly Task[], workers: number): Promise<Record<string, Report>> {
+  if (workers === 1) return runTasks(tasks);
+  // Deal tasks round-robin so each worker gets a similar mix.
+  const chunks: Task[][] = Array.from({ length: workers }, () => []);
+  tasks.forEach((t, i) => chunks[i % workers]!.push(t));
+  const parts = await Promise.all(
+    chunks.map(
+      (chunk) =>
+        new Promise<Record<string, Report>>((resolve, reject) => {
+          const w = new Worker(new URL(import.meta.url), { workerData: chunk });
+          w.once('message', resolve);
+          w.once('error', reject);
+        }),
+    ),
+  );
+  const merged: Record<string, Report> = {};
+  for (const part of parts) {
+    for (const [key, r] of Object.entries(part)) merged[key] = mergeReports(merged[key] ?? createReport(), r);
+  }
+  return merged;
 }
 
 const isLevel = (s: string): s is Difficulty => s === 'easy' || s === 'normal' || s === 'hard';
+const STYLES = Object.keys(makeConfig().ai.styles) as AiStyle[];
+const isStyle = (s: string): s is AiStyle => (STYLES as string[]).includes(s);
 
 if (!isMainThread) {
-  parentPort!.postMessage(runSeeds(workerData as Job));
+  parentPort!.postMessage(runTasks(workerData as Task[]));
 } else {
   const { values } = parseArgs({
     options: {
@@ -46,67 +87,74 @@ if (!isMainThread) {
       workers: { type: 'string', default: String(Math.max(1, availableParallelism() - 1)) },
       'home-level': { type: 'string', default: 'normal' },
       'away-level': { type: 'string', default: 'normal' },
+      'home-style': { type: 'string', default: 'balanced' },
+      'away-style': { type: 'string', default: 'balanced' },
+      'style-matrix': { type: 'boolean', default: false },
       strict: { type: 'boolean', default: false },
     },
   });
   const games = Number(values.games);
   const baseSeed = Number(values.seed);
-  const workers = Math.max(1, Math.min(Number(values.workers), games));
+  const workers = Math.max(1, Math.min(Number(values.workers), games * (values['style-matrix'] ? 6 : 1)));
   const home = values['home-level'];
   const away = values['away-level'];
+  const homeStyle = values['home-style'];
+  const awayStyle = values['away-style'];
   if (
     !Number.isInteger(games) ||
     games < 1 ||
     !Number.isInteger(baseSeed) ||
     !Number.isInteger(workers) ||
     !isLevel(home) ||
-    !isLevel(away)
+    !isLevel(away) ||
+    !isStyle(homeStyle) ||
+    !isStyle(awayStyle)
   ) {
     console.error(
-      'Usage: npm run sim -- --games <n> --seed <int> [--workers <n>] [--home-level easy|normal|hard] [--away-level easy|normal|hard] [--strict]',
+      'Usage: npm run sim -- --games <n> --seed <int> [--workers <n>] [--home-level easy|normal|hard] [--away-level easy|normal|hard]' +
+        ` [--home-style ${STYLES.join('|')}] [--away-style ...] [--style-matrix] [--strict]`,
     );
     process.exit(1);
   }
   const levels: [Difficulty, Difficulty] = [home, away];
-
-  const started = process.hrtime.bigint();
   const seeds = Array.from({ length: games }, (_, i) => baseSeed + i);
-  let report: Report;
-  if (workers === 1) {
-    report = runSeeds({ seeds, levels });
-  } else {
-    // Deal seeds round-robin so each worker gets a similar mix.
-    const chunks: number[][] = Array.from({ length: workers }, () => []);
-    seeds.forEach((s, i) => chunks[i % workers]!.push(s));
-    const parts = await Promise.all(
-      chunks.map(
-        (chunk) =>
-          new Promise<Report>((resolve, reject) => {
-            const w = new Worker(new URL(import.meta.url), {
-              workerData: { seeds: chunk, levels } satisfies Job,
-            });
-            w.once('message', resolve);
-            w.once('error', reject);
-          }),
-      ),
+  const started = process.hrtime.bigint();
+  const elapsedMs = () => Number(process.hrtime.bigint() - started) / 1e6;
+
+  if (values['style-matrix']) {
+    // The styles teams play (the 'balanced' baseline is for the same-AI gate, not a team).
+    const played = STYLES.filter((s) => s !== 'balanced');
+    const pairings = played.flatMap((a) =>
+      played.filter((b) => b !== a).map((b): [AiStyle, AiStyle] => [a, b]),
     );
-    report = parts.reduce((acc, r) => mergeReports(acc, r), createReport());
-  }
-  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+    const tasks = pairings.flatMap((styles) => seeds.map((seed): Task => ({ seed, levels, styles })));
+    const reports = await runParallel(tasks, workers);
+    const table: StyleTable = new Map();
+    for (const [a, b] of pairings) recordStyleMatchup(table, a, b, reports[`${a} vs ${b}`]!);
+    console.log(formatStyleTable(table, { gamesPerPairing: games, elapsedMs: elapsedMs() }));
+    if (values.strict && styleWarnings(table).length > 0) {
+      console.error('Style balance broken (see STYLE WARNINGS above).');
+      process.exit(2);
+    }
+  } else {
+    const styles: [AiStyle, AiStyle] = [homeStyle, awayStyle];
+    const tasks = seeds.map((seed): Task => ({ seed, levels, styles }));
+    const report = Object.values(await runParallel(tasks, workers))[0]!;
+    const config = makeConfig();
+    const styleNote = homeStyle === awayStyle ? '' : `, styles ${homeStyle} vs ${awayStyle}`;
+    console.log(
+      formatReport(report, config, {
+        games,
+        baseSeed,
+        elapsedMs: elapsedMs(),
+        setup: `${config.teams.runnersPerSide} runners + goalie per side, ${home} vs ${away}${styleNote}, ${workers} worker${workers === 1 ? '' : 's'}`,
+      }),
+    );
 
-  const config = makeConfig();
-  console.log(
-    formatReport(report, config, {
-      games,
-      baseSeed,
-      elapsedMs,
-      setup: `${config.teams.runnersPerSide} runners + goalie per side, ${home} vs ${away}, ${workers} worker${workers === 1 ? '' : 's'}`,
-    }),
-  );
-
-  // Balance thresholds only make sense with the same AI on both sides.
-  if (values.strict && home === away && balanceWarnings(report).length > 0) {
-    console.error('Balance thresholds broken (see BALANCE WARNINGS above).');
-    process.exit(2);
+    // Balance thresholds only make sense with the same AI on both sides.
+    if (values.strict && home === away && homeStyle === awayStyle && balanceWarnings(report).length > 0) {
+      console.error('Balance thresholds broken (see BALANCE WARNINGS above).');
+      process.exit(2);
+    }
   }
 }

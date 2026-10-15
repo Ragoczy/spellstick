@@ -229,7 +229,7 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     for (const q of teamRunners(state, me.team)) {
       if (q.id === me.id || q.staggerTicks > 0) continue;
       const d = dist(attack.mouth, q.pos);
-      if (!desperate && d > myDist - 3) continue;
+      if (!desperate && d > myDist - rc.passAdvance) continue;
       if (dist(q.pos, me.pos) > config.pass.maxAssistRange) continue;
       if (!laneOpen(state, me.team, me.pos, q.pos, level.passLaneClearance, true)) continue;
       const space = Math.min(6, nearestOpponentDist(state, q));

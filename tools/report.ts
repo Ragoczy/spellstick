@@ -1,5 +1,40 @@
 import type { SimConfig } from '../src/sim';
 
+/** Per-team counters (index 0 = home), for comparing playing styles (M9). */
+export interface TeamStats {
+  goals: number;
+  shots: number;
+  passes: number;
+  /** Passes this team caught. */
+  completions: number;
+  /** Body checks this team landed. */
+  checks: number;
+  /** Spells this team cast (the goalie's Ward included). */
+  casts: number;
+}
+
+const TEAM_KEYS = [
+  'goals',
+  'shots',
+  'passes',
+  'completions',
+  'checks',
+  'casts',
+] as const satisfies readonly (keyof TeamStats)[];
+
+export const emptyTeamStats = (): TeamStats => ({
+  goals: 0,
+  shots: 0,
+  passes: 0,
+  completions: 0,
+  checks: 0,
+  casts: 0,
+});
+
+function addTeamStats(into: TeamStats, from: TeamStats): void {
+  for (const k of TEAM_KEYS) into[k] += from[k];
+}
+
 /** Per-match counters collected by the headless runner. */
 export interface MatchStats {
   ticks: number;
@@ -37,10 +72,12 @@ export interface MatchStats {
   longestNoShotTicks: number;
   /** Times a player barely moved for more than 5 s of live play. */
   stuckPlayerIncidents: number;
+  /** The same kinds of counts split by team: home, away. */
+  teams: [TeamStats, TeamStats];
 }
 
 /** Counters summed over all matches. */
-type Summed = Omit<MatchStats, 'ticks' | 'score' | 'spellCasts' | 'longestNoShotTicks'>;
+type Summed = Omit<MatchStats, 'ticks' | 'score' | 'spellCasts' | 'longestNoShotTicks' | 'teams'>;
 
 export interface Report extends Summed {
   games: number;
@@ -51,6 +88,7 @@ export interface Report extends Summed {
   ties: number;
   spellCasts: Record<string, number>;
   longestNoShotTicks: number;
+  teams: [TeamStats, TeamStats];
 }
 
 const SUMMED_KEYS = [
@@ -79,7 +117,13 @@ const SUMMED_KEYS = [
 ] as const satisfies readonly (keyof Summed)[];
 
 export function emptyMatchStats(): MatchStats {
-  const stats = { ticks: 0, score: [0, 0], spellCasts: {}, longestNoShotTicks: 0 } as unknown as MatchStats;
+  const stats = {
+    ticks: 0,
+    score: [0, 0],
+    spellCasts: {},
+    longestNoShotTicks: 0,
+    teams: [emptyTeamStats(), emptyTeamStats()],
+  } as unknown as MatchStats;
   for (const k of SUMMED_KEYS) stats[k] = 0;
   return stats;
 }
@@ -94,6 +138,7 @@ export function createReport(): Report {
     ties: 0,
     spellCasts: {},
     longestNoShotTicks: 0,
+    teams: [emptyTeamStats(), emptyTeamStats()],
   } as unknown as Report;
   for (const k of SUMMED_KEYS) report[k] = 0;
   return report;
@@ -111,6 +156,8 @@ export function recordMatch(report: Report, m: MatchStats): void {
     report.spellCasts[spell] = (report.spellCasts[spell] ?? 0) + n;
   }
   report.longestNoShotTicks = Math.max(report.longestNoShotTicks, m.longestNoShotTicks);
+  addTeamStats(report.teams[0], m.teams[0]);
+  addTeamStats(report.teams[1], m.teams[1]);
 }
 
 /** Combines two reports (e.g. from worker threads) into a new one. */
@@ -128,6 +175,8 @@ export function mergeReports(a: Report, b: Report): Report {
       out.spellCasts[spell] = (out.spellCasts[spell] ?? 0) + n;
     }
     out.longestNoShotTicks = Math.max(out.longestNoShotTicks, r.longestNoShotTicks);
+    addTeamStats(out.teams[0], r.teams[0]);
+    addTeamStats(out.teams[1], r.teams[1]);
   }
   return out;
 }
@@ -196,5 +245,88 @@ export function formatReport(
     warnings.length > 0
       ? `  BALANCE WARNINGS:\n${warnings.map((w) => `    - ${w}`).join('\n')}`
       : '  balance: OK',
+  ].join('\n');
+}
+
+/** One playing style's results across a style matrix (M9): its games against every other style. */
+export interface StyleRecord {
+  games: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  goalsAgainst: number;
+  /** This style's own team counters, summed. */
+  totals: TeamStats;
+}
+
+export type StyleTable = Map<string, StyleRecord>;
+
+/** Win rate (of decided games) every style must stay within against the others. */
+export const STYLE_WIN_RATE_RANGE = [0.42, 0.58] as const;
+
+/** Adds one matchup's report (home style vs away style) to the table. */
+export function recordStyleMatchup(table: StyleTable, home: string, away: string, report: Report): void {
+  const entry = (style: string) => {
+    let r = table.get(style);
+    if (!r) {
+      r = { games: 0, wins: 0, losses: 0, ties: 0, goalsAgainst: 0, totals: emptyTeamStats() };
+      table.set(style, r);
+    }
+    return r;
+  };
+  const h = entry(home);
+  const a = entry(away);
+  h.games += report.games;
+  a.games += report.games;
+  h.wins += report.homeWins;
+  h.losses += report.awayWins;
+  a.wins += report.awayWins;
+  a.losses += report.homeWins;
+  h.ties += report.ties;
+  a.ties += report.ties;
+  h.goalsAgainst += report.teams[1].goals;
+  a.goalsAgainst += report.teams[0].goals;
+  addTeamStats(h.totals, report.teams[0]);
+  addTeamStats(a.totals, report.teams[1]);
+}
+
+/** Styles whose win rate against the others falls outside STYLE_WIN_RATE_RANGE. */
+export function styleWarnings(table: StyleTable): string[] {
+  const [lo, hi] = STYLE_WIN_RATE_RANGE;
+  const warnings: string[] = [];
+  for (const [style, r] of table) {
+    const decided = r.wins + r.losses;
+    const rate = decided > 0 ? r.wins / decided : 0.5;
+    if (rate < lo || rate > hi) {
+      warnings.push(
+        `${style} wins ${(rate * 100).toFixed(1)}% against the other styles (allowed ${Math.round(lo * 100)}–${Math.round(hi * 100)}%)`,
+      );
+    }
+  }
+  return warnings;
+}
+
+export function formatStyleTable(
+  table: StyleTable,
+  meta: { gamesPerPairing: number; elapsedMs: number },
+): string {
+  const per = (n: number, g: number) => (n / Math.max(1, g)).toFixed(1).padStart(7);
+  const rows = [...table].map(([style, r]) => {
+    const t = r.totals;
+    const decided = r.wins + r.losses;
+    return (
+      `  ${style.padEnd(12)}${String(r.games).padStart(6)}  ${pct(r.wins, decided).padStart(6)}` +
+      `${per(t.goals, r.games)}${per(r.goalsAgainst, r.games)}${per(t.shots, r.games)}` +
+      `${per(t.passes, r.games)}  ${pct(t.completions, t.passes).padStart(6)}${per(t.checks, r.games)}${per(t.casts, r.games)}`
+    );
+  });
+  const warnings = styleWarnings(table);
+  return [
+    `Style matrix — every pairing of different styles, ${meta.gamesPerPairing} games each way (${(meta.elapsedMs / 1000).toFixed(1)} s)`,
+    `  style        games    win%    GF/g    GA/g  shots/g passes/g  compl%  hits/g  casts/g`,
+    ...rows,
+    warnings.length > 0
+      ? `  STYLE WARNINGS:\n${warnings.map((w) => `    - ${w}`).join('\n')}`
+      : '  styles: OK',
   ].join('\n');
 }

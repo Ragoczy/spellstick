@@ -51,7 +51,8 @@
 #team-select .panel,
 #settings .panel,
 #report .panel,
-#unlink .panel {
+#unlink .panel,
+#training .panel {
   max-height: 100%;
   overflow-y: auto;
 }
@@ -493,6 +494,65 @@ body.pad-nav .choice:focus {
   to {
     transform: translateX(-50%) scale(1);
   }
+}
+
+/* Training (M9): the lesson card, top left over the rink. Clicks go through to the game. */
+#lesson {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: min(400px, 40vw);
+  background: var(--panel);
+  border: 2px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 10px 16px 12px;
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+#lesson[hidden] {
+  display: none;
+}
+#lesson h2 {
+  font-family: var(--serif);
+  color: var(--gold);
+  font-size: 22px;
+  margin: 2px 0 6px;
+}
+#lesson p {
+  margin: 0 0 4px;
+}
+#lesson .lesson-step,
+#lesson .lesson-hint {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+#lesson .lesson-step {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#lesson .lesson-goal {
+  margin-top: 8px;
+  font-weight: 600;
+}
+#lesson .pips {
+  color: var(--gold);
+  letter-spacing: 0.15em;
+}
+#lesson .lesson-feedback {
+  min-height: 1.4em;
+  font-family: var(--serif);
+  font-size: 18px;
+}
+#lesson .lesson-feedback.good {
+  color: var(--gold);
+}
+#lesson .lesson-feedback.bad {
+  color: #ff8a80;
+}
+#lesson .lesson-hint {
+  margin-top: 6px;
 }
 
 /* Sound toggle, always reachable. */

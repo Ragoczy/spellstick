@@ -58,11 +58,26 @@ jobs:
       - name: Headless sim, 1,000 games (strict)
         run: npm run sim -- --games 1000 --seed 1 --strict
 
+  # M9: no team playing style is the obvious pick. Every pairing, 200 games each way; a
+  # separate job so it runs alongside the balance job.
+  styles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Team styles, every pairing (strict)
+        run: npm run sim -- --style-matrix --games 200 --seed 1 --strict
+
   # Azure Container Apps (see infra/README.md). Signs in as id-game-spellstick-deploy, which
   # trusts only this repo's main branch, so no Azure password is stored in GitHub.
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test-and-build, balance]
+    needs: [test-and-build, balance, styles]
     runs-on: ubuntu-latest
     permissions:
       contents: read

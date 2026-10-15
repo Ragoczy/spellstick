@@ -319,6 +319,8 @@ describe('shot clock (SPEC §4.3)', () => {
         maxTicks: 80,
         from: { x: goal.mouth.x - 8, y: 0 },
         spin: 0,
+        savePenalty: 0,
+        tailwind: false,
       },
     };
     state.shotClock = { team: 0, ticksLeft: 1 };

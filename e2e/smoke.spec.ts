@@ -23,7 +23,7 @@ interface DebugHandle {
   };
   controlledId: number;
   eventCounts: Record<string, number>;
-  setup: { mode: string; home: string; away: string; difficulty: string };
+  setup: { mode: string; home: string; away: string; difficulty: string; spells?: string[] };
   fastForwardTo(phase: string): void;
 }
 
@@ -103,6 +103,17 @@ test('a new player: title, team select, controls, a match, pause, results, back 
   await page.getByRole('button', { name: 'Play' }).click();
   await expect(page.getByRole('heading', { name: 'Choose your match' })).toBeVisible();
   await page.locator('[data-difficulty="hard"]').click();
+  await page.getByRole('button', { name: 'Choose spells' }).click();
+
+  // Choose your spells (M10): the starting three are picked; drop Misdirection (R) and pick Snare.
+  await expect(page.getByRole('heading', { name: 'Choose your spells' })).toBeVisible();
+  await expect(page.locator('.spell-choice[aria-pressed="true"]')).toHaveCount(3);
+  await page.locator('[data-spell="snare"]').click();
+  await expect(page.locator('.spell-hint')).toContainText('You have three');
+  await page.locator('[data-spell="bentShot"]').click();
+  await page.locator('[data-spell="snare"]').click();
+  await expect(page.locator('[data-spell="snare"] .slot')).toHaveText('R');
+  await page.screenshot({ path: 'test-results/spells.png' });
   await page.getByRole('button', { name: 'Start match' }).click();
 
   // The one-screen controls card comes up before the first match.
@@ -116,6 +127,7 @@ test('a new player: title, team select, controls, a match, pause, results, back 
     home: 'wyverns',
     away: 'ichthyocentaurs',
     difficulty: 'hard',
+    spells: ['hexShove', 'quickstep', 'snare'],
   });
   expect(t0.state.phase).toBe('faceoff');
   expect(t0.state.faceoff!.whistled).toBe(false);
@@ -124,10 +136,13 @@ test('a new player: title, team select, controls, a match, pause, results, back 
 
   // Clicking right away jumps the whistle (it can't blow in the first second): a misfire,
   // so the away taker gets the ball. Deterministic, so it proves our click reaches the sim.
+  // (Event counts include the title-screen demo, so count from the start of this match.)
+  const wins0 = t0.eventCounts.faceoffWin ?? 0;
+  const whistles0 = t0.eventCounts.whistle ?? 0;
   await page.mouse.click(640, 380);
-  expect(await until(page, (d) => (d.eventCounts.faceoffWin ?? 0) >= 1, 5000)).toBe(true);
+  expect(await until(page, (d) => (d.eventCounts.faceoffWin ?? 0) > wins0, 5000)).toBe(true);
   const afterDraw = await debug(page);
-  expect(afterDraw.eventCounts.whistle ?? 0).toBe(0);
+  expect(afterDraw.eventCounts.whistle ?? 0).toBe(whistles0);
   expect(afterDraw.state.ball.carrier).toBe(awayTaker);
 
   await page.waitForTimeout(1000);
@@ -148,6 +163,9 @@ test('a new player: title, team select, controls, a match, pause, results, back 
   expect(await until(page, (d) => d.state.players[d.controlledId]!.checkCooldown > 0, 4000)).toBe(true);
   await page.keyboard.press('e');
   expect(await until(page, (d) => d.state.players[d.controlledId]!.quickstepTicks > 0, 4000)).toBe(true);
+  // R is the third spell picked: Snare.
+  await page.keyboard.press('r');
+  expect(await until(page, (d) => (d.eventCounts.snare ?? 0) >= 1, 4000)).toBe(true);
 
   // Space switches to a teammate (always a home runner).
   await page.keyboard.press('Space');

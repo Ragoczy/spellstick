@@ -52,7 +52,8 @@ export function handleActions(state: MatchState, p: Player, input: InputCommand,
     const held = p.primaryTicks;
     p.primaryTicks = 0;
     if (held <= tapTicks(config)) pass(state, p, config);
-    else shoot(state, p, chargeFraction(held, config), input.aim, config);
+    // Snared (M10): the bindings hold the stick, so a charged shot comes to nothing. Passes still go.
+    else if (p.rootTicks === 0) shoot(state, p, chargeFraction(held, config), input.aim, config);
   }
 }
 
@@ -129,15 +130,20 @@ export function leadPoint(from: Vec2, pos: Vec2, vel: Vec2, speed: number, maxSe
 function pass(state: MatchState, p: Player, config: SimConfig): void {
   const from = stickHead(p, config);
   let dir = facingDir(p);
+  // Tailwind (M10): faster and farther, and nobody on the other side can pick it off.
+  const tailwind = p.armed === 'tailwind';
+  if (tailwind) p.armed = null;
+  const tw = config.spells.tailwind;
+  const speed = config.pass.speed * (tailwind ? tw.speedMultiplier : 1);
+  const airSeconds = config.pass.airSeconds * (tailwind ? tw.airMultiplier : 1);
   const target = choosePassTarget(state, p, from, dir, config);
   if (target) {
-    const lead = leadPoint(from, target.pos, target.vel, config.pass.speed, config.pass.airSeconds);
+    const lead = leadPoint(from, target.pos, target.vel, speed, airSeconds);
     const lx = lead.x - from.x;
     const ly = lead.y - from.y;
     const len = Math.hypot(lx, ly);
     if (len > 1e-6) dir = { x: lx / len, y: ly / len };
   }
-  const speed = config.pass.speed;
   releaseBall(state, p, { x: dir.x * speed, y: dir.y * speed }, config);
   state.ball.flight = {
     kind: 'pass',
@@ -145,9 +151,11 @@ function pass(state: MatchState, p: Player, config: SimConfig): void {
     team: p.team,
     target: target?.id ?? null,
     ticks: 0,
-    maxTicks: secondsToTicks(config.pass.airSeconds, config),
+    maxTicks: secondsToTicks(airSeconds, config),
     from,
     spin: 0,
+    savePenalty: 0,
+    tailwind,
   };
   state.events.push({ type: 'pass', playerId: p.id, team: p.team, target: target?.id ?? null });
 }
@@ -164,13 +172,20 @@ function shoot(state: MatchState, p: Player, charge: number, aim: Vec2, config: 
   const speed = shotSpeed(charge, config);
   let dir = rotate(facingDir(p), nextRange(state.rng, -spread, spread));
   let spin = 0;
-  if (p.bentArmed) {
-    // Bent Shot: launch wide and curve back onto the aim point (plus the usual aim error).
-    p.bentArmed = false;
+  let savePenalty = 0;
+  if (p.armed === 'bentShot') {
+    // Bent Shot (Misdirection): launch wide and curve back onto the aim point (plus the usual aim error).
+    p.armed = null;
     const goal = arenaFor(config).goals[p.team === 0 ? 1 : 0];
     const bent = bentLaunch(from, aim, speed, goal, config);
     dir = rotate(bent.dir, nextRange(state.rng, -spread, spread));
     spin = bent.spin;
+    savePenalty = config.spells.bentShot.savePenalty;
+  } else if (p.armed === 'pinpoint') {
+    // Pinpoint (M10): dead on where the stick points, and harder to save.
+    p.armed = null;
+    dir = facingDir(p);
+    savePenalty = config.spells.pinpoint.savePenalty;
   }
   releaseBall(state, p, { x: dir.x * speed, y: dir.y * speed }, config);
   state.ball.flight = {
@@ -182,6 +197,8 @@ function shoot(state: MatchState, p: Player, charge: number, aim: Vec2, config: 
     maxTicks: secondsToTicks(config.shot.airSeconds, config),
     from,
     spin,
+    savePenalty,
+    tailwind: false,
   };
   state.events.push({ type: 'shot', playerId: p.id, team: p.team, speed });
 }

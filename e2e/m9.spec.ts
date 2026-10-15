@@ -201,6 +201,7 @@ test('goal replays: a goal replays in slow motion, the sim waits, and a click sk
   // Team select shows each team's style.
   await page.getByRole('button', { name: 'Play' }).click();
   await expect(page.locator('#team-select')).toContainText('Hit hard and carry the ball');
+  await page.getByRole('button', { name: 'Choose spells' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
   await page.getByRole('button', { name: 'Face off!' }).click();
   expect(await until(page, (d) => d.phase === 'faceoff', 5000)).toBe(true);

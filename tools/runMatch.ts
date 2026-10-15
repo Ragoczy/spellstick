@@ -6,6 +6,7 @@ import {
   type AiStyle,
   type Difficulty,
   type InputCommand,
+  type RunnerSpell,
   type SimConfig,
   type TeamIndex,
 } from '../src/sim';
@@ -18,8 +19,9 @@ export function runMatch(
   seed: number,
   levels: [Difficulty, Difficulty] = ['normal', 'normal'],
   styles: [AiStyle, AiStyle] = ['balanced', 'balanced'],
+  loadouts?: [RunnerSpell[], RunnerSpell[]],
 ): MatchStats {
-  const state = createMatch(config, seed, matchRoster(config), { start: 'faceoff' });
+  const state = createMatch(config, seed, matchRoster(config), { start: 'faceoff', loadouts });
   const controllers = createTeamControllers(state, config, seed, levels, styles);
   const stats = emptyMatchStats();
 

@@ -2,7 +2,15 @@ import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/change
 import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
 import { LESSONS, TRAINING_TEXT } from '../content/training';
-import { DRILLS, type Difficulty, type DrillId } from '../sim';
+import {
+  DEFAULT_CONFIG,
+  DRILLS,
+  LOADOUT_SIZE,
+  SPELL_POOL,
+  type Difficulty,
+  type DrillId,
+  type RunnerSpell,
+} from '../sim';
 import { DISCORD_SIGN_IN_MESSAGES, type AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import { PRIVACY_URL, TERMS_URL } from './links';
@@ -285,7 +293,7 @@ export function unlinkScreen(a: { confirm(): Promise<boolean>; cancel(): void })
       el(
         'li',
         {},
-        'your saved team, opponent, difficulty, sound setting, and training progress in this browser',
+        'your saved team, opponent, difficulty, spells, sound setting, and training progress in this browser',
       ),
     ),
     el(
@@ -334,6 +342,8 @@ export interface TeamSelection {
   home: TeamId;
   away: TeamId;
   difficulty: Difficulty;
+  /** Your team's three spells, in key order (M10). */
+  spells: RunnerSpell[];
 }
 
 const DIFFICULTIES: { id: Difficulty; label: string; blurb: string }[] = [
@@ -406,7 +416,99 @@ export function teamSelectScreen(
       'div',
       { class: 'actions' },
       button('Back', actions.back),
-      button('Start match', () => actions.start({ ...sel }), 'btn primary'),
+      button('Choose spells', () => actions.start({ ...sel }), 'btn primary'),
+    ),
+  );
+  refresh();
+  return node;
+}
+
+const SPELL_KEYS = ['Q', 'E', 'R'] as const;
+
+/**
+ * Choose your spells (M10): three of the ten for your team, on Q / E / R (X / Y / B on a pad)
+ * in the order picked. Tap a picked one to drop it.
+ */
+export function spellsScreen(
+  initial: readonly RunnerSpell[],
+  actions: { start(spells: RunnerSpell[]): void; back(): void },
+): HTMLElement {
+  const slots: (RunnerSpell | null)[] = Array.from({ length: LOADOUT_SIZE }, (_, i) => initial[i] ?? null);
+  const slotName = (i: number) => `${SPELL_KEYS[i]} / ${PAD_LABEL[PAD_BINDINGS.spells[i]!]}`;
+  const buttons = new Map<RunnerSpell, HTMLButtonElement>();
+  const hint = el('p', { class: 'settings-note spell-hint', role: 'status' });
+  const summary = el('div', { class: 'spell-slots', 'aria-label': 'Your spells' });
+
+  const refresh = () => {
+    for (const [id, b] of buttons) {
+      const i = slots.indexOf(id);
+      b.setAttribute('aria-pressed', String(i >= 0));
+      b.querySelector('.slot')!.textContent = i >= 0 ? SPELL_KEYS[i]! : '';
+    }
+    summary.replaceChildren(
+      ...slots.map((s, i) =>
+        el(
+          'span',
+          { class: s ? 'slot-pill' : 'slot-pill empty' },
+          `${slotName(i)}: ${s ? SPELLS[s].name : '—'}`,
+        ),
+      ),
+    );
+  };
+
+  const choice = (id: RunnerSpell) => {
+    const info = SPELLS[id];
+    const b = el(
+      'button',
+      { class: 'choice spell-choice', type: 'button', 'aria-pressed': 'false', 'data-spell': id },
+      el('span', { class: 'slot', 'aria-hidden': 'true' }),
+      el('span', {}, info.name, el('small', {}, `${info.blurb}. ${DEFAULT_CONFIG.spells[id].cost} mana.`)),
+    );
+    b.addEventListener('click', () => {
+      const i = slots.indexOf(id);
+      if (i >= 0) {
+        slots[i] = null;
+      } else {
+        const free = slots.indexOf(null);
+        if (free < 0) {
+          hint.textContent = 'You have three. Tap one of yours to drop it first.';
+          return;
+        }
+        slots[free] = id;
+      }
+      hint.textContent = '';
+      refresh();
+    });
+    buttons.set(id, b);
+    return b;
+  };
+
+  const node = screen(
+    'spells',
+    el('h2', {}, 'Choose your spells'),
+    el(
+      'p',
+      { class: 'settings-note' },
+      'Pick three for your team. They go on Q, E, and R (X, Y, and B on a controller) in the order you pick them.',
+    ),
+    summary,
+    el('div', { class: 'choices spell-grid' }, ...SPELL_POOL.map(choice)),
+    hint,
+    el(
+      'div',
+      { class: 'actions' },
+      button('Back', actions.back),
+      button(
+        'Start match',
+        () => {
+          if (slots.some((s) => s === null)) {
+            hint.textContent = 'Pick three spells.';
+            return;
+          }
+          actions.start(slots as RunnerSpell[]);
+        },
+        'btn primary',
+      ),
     ),
   );
   refresh();
@@ -427,11 +529,7 @@ export function controlsScreen(onDone: () => void, doneLabel = 'Got it'): HTMLEl
       'Shoot (hold longer for a harder shot)',
     ],
     ['Right click', padKeys(PAD_BINDINGS.check), 'Body check (a short dash the way you move)'],
-    [
-      'Q / E / R',
-      padKeys(PAD_BINDINGS.spells, ' / '),
-      `${SPELLS.hexShove.name} / ${SPELLS.quickstep.name} / ${SPELLS.bentShot.name}`,
-    ],
+    ['Q / E / R', padKeys(PAD_BINDINGS.spells, ' / '), 'Your three spells (you pick them before each match)'],
     ['Space', padKeys(PAD_BINDINGS.switchPlayer), 'On defense: switch to the teammate nearest the ball'],
     ['Esc', padKeys(PAD_BINDINGS.pause), 'Pause'],
     ['M', padKeys(PAD_BINDINGS.mute), 'Sound on/off'],
@@ -466,7 +564,7 @@ export function controlsScreen(onDone: () => void, doneLabel = 'Got it'): HTMLEl
       el(
         'li',
         {},
-        `Spells cost mana (the gold bar, bottom left). ${SPELLS.hexShove.name} pops the ball loose; ${SPELLS.bentShot.name} curls your next shot.`,
+        'Spells cost mana (the gold bar, bottom left). Pick three of ten before each match: hits, tricks, shields, and shots.',
       ),
       el(
         'li',

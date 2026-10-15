@@ -513,6 +513,56 @@ body.pad-nav .choice:focus {
   }
 }
 
+/* Choose your spells (M10). */
+#spells .panel {
+  max-height: 100%;
+  overflow-y: auto;
+}
+.spell-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px 0 14px;
+}
+.slot-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-size: 13px;
+}
+.slot-pill.empty {
+  border-color: rgba(242, 239, 230, 0.3);
+  color: var(--ink-dim);
+}
+.spell-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.spell-choice {
+  align-items: flex-start;
+}
+.spell-choice .slot {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 4px;
+  text-align: center;
+  font-family: var(--serif);
+  border: 1px solid rgba(242, 239, 230, 0.25);
+}
+.spell-choice[aria-pressed='true'] .slot {
+  background: var(--gold);
+  color: #000;
+  border-color: var(--gold);
+}
+.spell-hint {
+  min-height: 1.4em;
+  text-align: center;
+  color: var(--gold);
+}
+
 /* Training (M9): the lesson card, top left over the rink. Clicks go through to the game. */
 #lesson {
   position: absolute;

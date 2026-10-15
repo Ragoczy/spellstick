@@ -27,16 +27,21 @@ export interface ReplayPlayer {
   charge: number;
   staggered: boolean;
   quickstep: boolean;
-  bentArmed: boolean;
+  armed: boolean;
+  rooted: boolean;
+  stone: boolean;
+  images: number;
 }
 
 /** What one sim tick looked like: enough to draw it again. */
 export interface ReplayFrame {
   tick: number;
   players: ReplayPlayer[];
-  ball: { x: number; y: number; vel: Vec2; flight: Pick<Flight, 'kind' | 'spin'> | null };
+  ball: { x: number; y: number; vel: Vec2; flight: Pick<Flight, 'kind' | 'spin' | 'tailwind'> | null };
   /** Ids of goalies whose Ward is up. */
   wards: number[];
+  /** Ice Walls standing. */
+  walls: { a: Vec2; b: Vec2 }[];
   /** Events with a visual effect (hits, spells), to flash again during the replay. */
   fx: SimEvent[];
   /** Play restarted on this tick (a faceoff set): a replay never reaches back past it. */
@@ -49,6 +54,10 @@ const FX_EVENTS: ReadonlySet<SimEvent['type']> = new Set([
   'hexShove',
   'cast',
   'wardBlock',
+  'blink',
+  'snare',
+  'imagePop',
+  'stoneBlock',
 ]);
 
 /** Captures a frame from sim state after a tick. `charge` maps a player to their shot charge (0..1). */
@@ -63,15 +72,21 @@ export function captureFrame(state: Readonly<MatchState>, charge: (playerId: num
       charge: ball.carrier === p.id ? charge(p.id) : 0,
       staggered: p.staggerTicks > 0,
       quickstep: p.quickstepTicks > 0,
-      bentArmed: p.bentArmed,
+      armed: p.armed !== null,
+      rooted: p.rootTicks > 0,
+      stone: p.stoneTicks > 0,
+      images: p.images,
     })),
     ball: {
       x: ball.pos.x,
       y: ball.pos.y,
       vel: { x: ball.vel.x, y: ball.vel.y },
-      flight: ball.flight ? { kind: ball.flight.kind, spin: ball.flight.spin } : null,
+      flight: ball.flight
+        ? { kind: ball.flight.kind, spin: ball.flight.spin, tailwind: ball.flight.tailwind }
+        : null,
     },
     wards: state.players.filter((p) => p.role === 'goalie' && p.wardTicks > 0).map((p) => p.id),
+    walls: state.walls.map((w) => ({ a: { ...w.a }, b: { ...w.b } })),
     fx: state.events.filter((e) => FX_EVENTS.has(e.type)),
     cut: state.events.some((e) => e.type === 'faceoffSet' || e.type === 'restart'),
   };

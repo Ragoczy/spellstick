@@ -153,7 +153,7 @@ describe('Bent Shot (R)', () => {
     const { state, config } = setup();
     const p = state.players[0]!;
     run(state, config, 1, [cast('bentShot')]);
-    expect(p.bentArmed).toBe(true);
+    expect(p.armed).toBe('bentShot');
     expect(p.mana).toBeLessThan(config.mana.max - config.spells.bentShot.cost + 1);
     expect(p.spellCooldowns.bentShot).toBe(
       secondsToTicks(config.spells.bentShot.cooldownSeconds, config) - 0,
@@ -194,7 +194,7 @@ describe('Bent Shot (R)', () => {
     run(state, config, 20, [{ ...idle(aim), primary: true }]);
     run(state, config, 1, [idle(aim)]);
     expect(state.ball.flight?.spin).not.toBe(0);
-    expect(state.players[0]!.bentArmed).toBe(false);
+    expect(state.players[0]!.armed).toBeNull();
   });
 });
 
@@ -224,6 +224,8 @@ describe('Ward (goalie)', () => {
         maxTicks: 80,
         from: { x: 0, y: 0 },
         spin: 0,
+        savePenalty: 0,
+        tailwind: false,
       },
     };
   };

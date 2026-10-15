@@ -7,7 +7,7 @@ import type { WorldView } from './view';
 /** What the ball view needs besides position: a live sim ball, or a replay frame's. */
 export interface BallDrawState {
   vel: Vec2;
-  flight: Pick<Flight, 'kind' | 'spin'> | null;
+  flight: Pick<Flight, 'kind' | 'spin' | 'tailwind'> | null;
 }
 
 /** Drawn larger than the sim ball so it reads at this zoom. */
@@ -41,7 +41,8 @@ export class BallView {
     const sy = this.view.y(y);
     this.dot.setPosition(sx, sy);
     const flight = ball.flight;
-    const bending = flight !== null && flight.spin !== 0;
+    // A gold trail behind a bending shot (Misdirection) or a Tailwind pass.
+    const bending = flight !== null && (flight.spin !== 0 || flight.tailwind);
     if (bending) {
       this.trailPoints.push({ x: sx, y: sy });
       if (this.trailPoints.length > 14) this.trailPoints.shift();

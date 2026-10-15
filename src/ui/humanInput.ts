@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { RUNNER_SPELLS, type GoalGeometry, type InputCommand, type SpellId, type Vec2 } from '../sim';
+import type { GoalGeometry, InputCommand, SpellId, Vec2 } from '../sim';
 import { GamepadReader, PAD_BINDINGS, padAimPoint } from './gamepad';
 
 /** Screen-to-world mapping, supplied by the renderer. */
@@ -17,8 +17,8 @@ export class HumanInput {
   private pendingDrop = false;
   private pendingPrimary = false;
   private pendingCheck = false;
-  /** Spell presses waiting for a tick, oldest first: one cast per tick, none dropped. */
-  private castQueue: SpellId[] = [];
+  /** Spell-slot presses (0 = Q, 1 = E, 2 = R) waiting for a tick, oldest first: one cast per tick, none dropped. */
+  private castQueue: number[] = [];
   /** Called when the player presses the switch key (Space). Control switching is a UI concern, not a sim rule. */
   onSwitch: () => void = () => {};
   private pointerSeen = false;
@@ -37,10 +37,8 @@ export class HumanInput {
     this.keys = kb.addKeys('W,A,S,D') as HumanInput['keys'];
     kb.on('keydown', () => (this.usingPad = false));
     kb.on('keydown-G', () => (this.pendingDrop = true));
-    // Q / E / R: spells 1-3 (SPEC §5).
-    (['Q', 'E', 'R'] as const).forEach((key, i) =>
-      kb.on(`keydown-${key}`, () => this.castQueue.push(RUNNER_SPELLS[i]!)),
-    );
+    // Q / E / R: your three spells, in the order you picked them (SPEC §5, M10).
+    (['Q', 'E', 'R'] as const).forEach((key, i) => kb.on(`keydown-${key}`, () => this.castQueue.push(i)));
     kb.on('keydown-SPACE', () => this.onSwitch());
     kb.addCapture('SPACE');
     scene.input.mouse?.disableContextMenu();
@@ -71,13 +69,13 @@ export class HumanInput {
     if (this.pad.anyPressed(PAD_BINDINGS.primary)) this.pendingPrimary = true;
     if (this.pad.anyPressed(PAD_BINDINGS.check)) this.pendingCheck = true;
     PAD_BINDINGS.spells.forEach((b, i) => {
-      if (this.pad.pressed(b)) this.castQueue.push(RUNNER_SPELLS[i]!);
+      if (this.pad.pressed(b)) this.castQueue.push(i);
     });
     if (this.pad.anyPressed(PAD_BINDINGS.switchPlayer)) this.onSwitch();
   }
 
-  /** Builds this tick's command for the player at `origin`, attacking `attack`. */
-  command(origin: Vec2, attack: GoalGeometry): InputCommand {
+  /** Builds this tick's command for the player at `origin`, attacking `attack`, who carries `spells`. */
+  command(origin: Vec2, attack: GoalGeometry, spells: readonly SpellId[]): InputCommand {
     let move = {
       x: (this.keys.D.isDown ? 1 : 0) - (this.keys.A.isDown ? 1 : 0),
       y: (this.keys.S.isDown ? 1 : 0) - (this.keys.W.isDown ? 1 : 0),
@@ -105,7 +103,7 @@ export class HumanInput {
       aim,
       primary,
       check: this.pendingCheck,
-      cast: this.castQueue[0],
+      cast: this.castQueue.length > 0 ? spells[this.castQueue[0]!] : undefined,
       debugDrop: this.pendingDrop,
     };
   }

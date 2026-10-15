@@ -9,9 +9,12 @@ import {
   choosePassTarget,
   createDrill,
   createMatch,
+  DEFAULT_LOADOUT,
   DRILL_TARGET,
   drillConfig,
   DrillJudge,
+  drawLoadout,
+  loadoutRng,
   facingDir,
   FixedStepper,
   makeConfig,
@@ -25,6 +28,7 @@ import {
   type DrillVerdict,
   type InputCommand,
   type MatchState,
+  type RunnerSpell,
   type SimConfig,
   type SimEvent,
   type TeamIndex,
@@ -39,6 +43,9 @@ import { RETRO, RetroWorld } from './retro';
 import { drawRink } from './RinkView';
 import { SpellBar } from './SpellBar';
 import { WorldView } from './view';
+
+/** Ice Walls are pale ice blue under their gold edge. */
+const ICE_COLOR = 0xd8f0ff;
 
 /** The human plays for this team (the left/home side). */
 const HUMAN_TEAM: TeamIndex = 0;
@@ -55,6 +62,8 @@ export interface MatchSetup {
   mode: 'play' | 'demo' | 'training';
   /** The drill to run, in training. */
   drill?: DrillId;
+  /** Your team's three spells (M10); the starting three if left out. Opponents get three at random. */
+  spells?: readonly RunnerSpell[];
   seed?: number;
 }
 
@@ -104,6 +113,8 @@ export class MatchScene extends Phaser.Scene {
   private retro?: RetroWorld;
   /** Gold shields across the goal mouths while a goalie's Ward is up. */
   private wardFx!: Phaser.GameObjects.Graphics;
+  /** Ice Walls standing (M10). */
+  private wallFx!: Phaser.GameObjects.Graphics;
   /** -1 when nobody is human-controlled (demo). */
   private controlledId = -1;
   private prev!: Snapshot;
@@ -157,6 +168,7 @@ export class MatchScene extends Phaser.Scene {
       this.retro.capture();
     }
     this.wardFx = this.add.graphics().setDepth(12);
+    this.wallFx = this.add.graphics().setDepth(11);
     this.stepper = new FixedStepper(
       () => this.tick(),
       tickSeconds(this.config),
@@ -208,7 +220,12 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     this.training = null;
-    const state = createMatch(this.config, seed, matchRoster(this.config), { start: 'faceoff' });
+    // Your three (the demo has nobody to pick, so both teams draw at random), and theirs at random.
+    const home = demo ? drawLoadout(loadoutRng(seed, 0)) : [...(setup.spells ?? DEFAULT_LOADOUT)];
+    const state = createMatch(this.config, seed, matchRoster(this.config), {
+      start: 'faceoff',
+      loadouts: [home, drawLoadout(loadoutRng(seed, 1))],
+    });
     const levels: [Difficulty, Difficulty] = demo ? ['normal', 'normal'] : ['normal', setup.difficulty];
     this.loadState(
       state,
@@ -297,7 +314,11 @@ export class MatchScene extends Phaser.Scene {
     for (const p of this.state.players) {
       if (p.id === this.controlledId && !autopilot) {
         // The goal this player attacks is the one the other team defends.
-        inputs[p.id] = this.input_.command(p.pos, arenaFor(this.config).goals[p.team === 0 ? 1 : 0]);
+        inputs[p.id] = this.input_.command(
+          p.pos,
+          arenaFor(this.config).goals[p.team === 0 ? 1 : 0],
+          p.spells,
+        );
       } else {
         inputs[p.id] = this.controllers[p.id]!.decide(this.state, p.id);
       }
@@ -376,6 +397,10 @@ export class MatchScene extends Phaser.Scene {
       case 'hexShove':
       case 'cast':
       case 'wardBlock':
+      case 'blink':
+      case 'snare':
+      case 'imagePop':
+      case 'stoneBlock':
         this.effect(e, (id) => {
           const p = this.state.players[id]!;
           return { x: p.pos.x, y: p.pos.y, facing: p.facing };
@@ -405,6 +430,46 @@ export class MatchScene extends Phaser.Scene {
       case 'wardBlock':
         this.castPulse(at(e.goalieId), 2.5);
         break;
+      case 'blink':
+        // Gone from here, there in a flash.
+        this.castPulse(e.from, 0.9);
+        this.castPulse(e.to, 0.9);
+        break;
+      case 'snare':
+        if (e.targetId !== null) this.snareFlash(at(e.playerId), at(e.targetId));
+        break;
+      case 'imagePop':
+        this.castPulse(at(e.playerId), 0.8);
+        break;
+      case 'stoneBlock':
+        this.hitFlash(at(e.playerId), false);
+        break;
+    }
+  }
+
+  /** Snare: a gold line lashes from the caster to the one it pins. */
+  private snareFlash(from: { x: number; y: number }, to: { x: number; y: number }): void {
+    const g = this.add.graphics().setDepth(19);
+    g.lineStyle(3, PALETTE.mana, 0.9).lineBetween(
+      this.view.x(from.x),
+      this.view.y(from.y),
+      this.view.x(to.x),
+      this.view.y(to.y),
+    );
+    this.tweens.add({ targets: g, alpha: 0, duration: 350, onComplete: () => g.destroy() });
+  }
+
+  /** Ice Walls: a pale band edged in gold, like the Ward. */
+  private drawWalls(walls: readonly { a: { x: number; y: number }; b: { x: number; y: number } }[]): void {
+    const g = this.wallFx.clear();
+    const thick = this.view.len(this.config.spells.iceWall.halfThickness * 2);
+    for (const w of walls) {
+      const ax = this.view.x(w.a.x);
+      const ay = this.view.y(w.a.y);
+      const bx = this.view.x(w.b.x);
+      const by = this.view.y(w.b.y);
+      g.lineStyle(thick + 14, PALETTE.mana, 0.35).lineBetween(ax, ay, bx, by);
+      g.lineStyle(thick + 5, ICE_COLOR, 0.95).lineBetween(ax, ay, bx, by);
     }
   }
 
@@ -462,12 +527,16 @@ export class MatchScene extends Phaser.Scene {
         staggered: b.staggered,
         checkReady: true,
         quickstep: b.quickstep,
-        bentArmed: b.bentArmed,
+        armed: b.armed,
+        rooted: b.rooted,
+        stone: b.stone,
+        images: b.images,
       });
     });
     this.ballView.update(lerp(from.ball.x, to.ball.x), lerp(from.ball.y, to.ball.y), to.ball);
     step.fired.forEach((e, k) => this.effect(e, (id) => step.firedFrames[k]!.players[id]!));
     this.drawWards(to.wards);
+    this.drawWalls(to.walls);
     this.hud.update(this.state);
     this.retro?.render();
   }
@@ -574,7 +643,10 @@ export class MatchScene extends Phaser.Scene {
         staggered: p.staggerTicks > 0,
         checkReady: p.checkCooldown === 0,
         quickstep: p.quickstepTicks > 0,
-        bentArmed: p.bentArmed,
+        armed: p.armed !== null,
+        rooted: p.rootTicks > 0,
+        stone: p.stoneTicks > 0,
+        images: p.images,
       });
     });
     this.ballView.update(lerp(this.prev.ball.x, s.ball.pos.x), lerp(this.prev.ball.y, s.ball.pos.y), s.ball);
@@ -582,6 +654,7 @@ export class MatchScene extends Phaser.Scene {
     this.spellBar.showPadLabels(this.input_.usingPad);
     this.spellBar.update(me);
     this.drawWards(s.players.filter((p) => p.role === 'goalie' && p.wardTicks > 0).map((p) => p.id));
+    this.drawWalls(s.walls);
     this.retro?.render();
   }
 

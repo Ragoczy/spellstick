@@ -73,11 +73,26 @@ jobs:
       - name: Team styles, every pairing (strict)
         run: npm run sim -- --style-matrix --games 200 --seed 1 --strict
 
+  # M10: no spell is the obvious pick (or a dead one). Each of the ten, 300 games with it
+  # against a team without it; its own job, alongside the others.
+  spells:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Spell edges, all ten (strict)
+        run: npm run sim -- --spell-edges --games 300 --seed 1 --strict
+
   # Azure Container Apps (see infra/README.md). Signs in as id-game-spellstick-deploy, which
   # trusts only this repo's main branch, so no Azure password is stored in GitHub.
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test-and-build, balance, styles]
+    needs: [test-and-build, balance, styles, spells]
     runs-on: ubuntu-latest
     permissions:
       contents: read

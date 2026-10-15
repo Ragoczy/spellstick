@@ -168,18 +168,23 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
   await press(page, 'B');
   await expect(page.getByRole('heading', { name: 'SPELLSTICK' })).toBeVisible();
 
-  // Play → team select. The focus starts on Start match; go up into the difficulty row and pick one.
+  // Play → team select. The focus starts on Choose spells; go up into the difficulty row and pick one.
   expect(await focusedText(page)).toBe('Play');
   await press(page, 'A');
   await expect(page.getByRole('heading', { name: 'Choose your match' })).toBeVisible();
-  expect(await focusedText(page)).toBe('Start match');
+  expect(await focusedText(page)).toBe('Choose spells');
   await press(page, 'UP');
   const picked = await page.evaluate(() => document.activeElement?.getAttribute('data-difficulty'));
   expect(picked).toBeTruthy();
   await press(page, 'A');
   await expect(page.locator(`[data-difficulty="${picked}"]`)).toHaveAttribute('aria-pressed', 'true');
   await press(page, 'DOWN');
-  if ((await focusedText(page)) !== 'Start match') await press(page, 'RIGHT');
+  if ((await focusedText(page)) !== 'Choose spells') await press(page, 'RIGHT');
+  expect(await focusedText(page)).toBe('Choose spells');
+  await press(page, 'A');
+
+  // Choose your spells: the saved three are picked, and the focus starts on Start match.
+  await expect(page.getByRole('heading', { name: 'Choose your spells' })).toBeVisible();
   expect(await focusedText(page)).toBe('Start match');
   await press(page, 'A');
 
@@ -193,8 +198,10 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
 
   // Pulling RT right away jumps the whistle: a misfire, so the away taker wins the draw.
   // Deterministic, so it proves the trigger reaches the sim.
+  // (Event counts include the title-screen demo, so count from the start of this match.)
+  const wins0 = t0.eventCounts.faceoffWin ?? 0;
   await press(page, 'RT');
-  expect(await until(page, (d) => (d.eventCounts.faceoffWin ?? 0) >= 1, 5000)).toBe(true);
+  expect(await until(page, (d) => (d.eventCounts.faceoffWin ?? 0) > wins0, 5000)).toBe(true);
   expect((await debug(page)).state.ball.carrier).toBe(awayTaker);
 
   // Left stick down moves the controlled player down.

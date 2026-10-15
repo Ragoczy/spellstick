@@ -19,7 +19,7 @@ export const LESSONS: Record<DrillId, Lesson> = {
     title: 'Run and scoop',
     lines: [
       'Move with {move}. Run over the loose ball to scoop it up.',
-      'In a hurry? {e} casts {quickstep}, a burst of speed.',
+      'In a hurry? {e} casts {quickstep} for a few seconds of extra speed.',
     ],
     goal: 'Scoop up 2 loose balls',
   },

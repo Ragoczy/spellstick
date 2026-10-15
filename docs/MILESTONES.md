@@ -116,6 +116,30 @@ Paul's call: "Turn items 1–3 (goal replays, team identities, training ground) 
 - From Paul (2026-10-15): "two teams are fine, add the nudge".
   - [x] Until a training lesson is finished in this browser, the title screen points new players at Training: the button glows and a line under it says "New? Start here: seven short lessons." Play stays the main button.
   - [x] Re-gate.
+- Paul moved on to M10 (2026-10-15) with no further notes.
+
+## M10 — Spell loadouts: ten spells from the card game (Paul, 2026-10-15)
+Paul's call: pick 10 of the card game's spells "that fit this version of the game for players to choose from", then "plan these 10 spells as M10: choose 3 before each match, the AI uses them, and a balance pass. Then start building."
+- The ten (names from the card game's spell library; the first three keep their old ids, `hexShove`, `quickstep`, `bentShot`):
+  - [x] Thunderclap, Burst of Speed, and Misdirection: today's Hex Shove, Quickstep, and Bent Shot, renamed, same effects.
+  - [x] Pinpoint: your next shot has no aim error and is harder to save.
+  - [x] Blink: teleport a few meters the way you're moving (or aiming), keeping the ball; never into a crease, a goal, or the boards.
+  - [x] Snare: pins the nearest opponent in a narrow cone in place for about a second.
+  - [x] Ice Wall: a short wall in front of you for a few seconds; balls and players bounce off it. It can't be raised touching a crease.
+  - [x] Stone Skin: for a couple of seconds, checks and Thunderclaps don't knock you back, daze you, or strip the ball.
+  - [x] Tailwind: your next pass flies faster and farther, can't be intercepted, and your teammate always catches it.
+  - [x] Glamour Self: two illusions run beside you for a few seconds; a check, Thunderclap, or Snare aimed at you hits an illusion two times in three.
+  - [x] One armed spell at a time (Misdirection, Pinpoint, or Tailwind).
+  - [x] Every spell has a unit test for its effect, cost, and cooldown, and a gold visual that reads at a glance (replays too).
+- Loadouts
+  - [x] Before each match, pick 3 of the 10 for your team (Q / E / R, or X / Y / B, in the order picked), remembered with your team choice. Thunderclap, Burst of Speed, and Misdirection to start. Works on a controller.
+  - [x] Your AI teammates carry your three; the opponents get three at random. The title demo uses random sets; training keeps the starting three.
+  - [x] The spell bar shows your three; the controls card says spells are picked before the match.
+- AI
+  - [x] The AI casts every spell situationally (SPEC §7), by the same rules as the player.
+- Balance
+  - [x] The headless sim plays random loadouts. A new `--spell-edges` run measures each spell: matches where one team always carries it against a team that never does, sides swapped. Every spell wins 42–58% over 400 games per spell (no obvious pick and no dead one), no spell is above 40% of casts, goals per game stay 6–20, and home wins stay 45–55%. CI checks the spell edges with a quicker 300 games per spell, allowing 40–60% for the extra noise.
+- **Done when:** a player can pick any 3 of the 10 before a match and play with them on keyboard and mouse or a controller; the AI casts all ten; and the sim shows no spell is the obvious pick.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

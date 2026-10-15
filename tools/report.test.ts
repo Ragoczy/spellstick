@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeConfig } from '../src/sim';
+import { drawLoadout, loadoutRng, makeConfig, SPELL_POOL } from '../src/sim';
 import { balanceWarnings, createReport, formatReport, mergeReports, recordMatch } from './report';
 import { runMatch } from './runMatch';
 
@@ -21,6 +21,15 @@ describe('headless sim runner', () => {
       expect(stats.stuckPlayerIncidents).toBe(0);
     }
   });
+
+  it('the AI casts each of the ten spells (M10): both teams carry it, in short matches', () => {
+    const config = makeConfig({ match: { periodSeconds: 60 } });
+    for (const spell of SPELL_POOL) {
+      const loadout = drawLoadout(loadoutRng(1, 0), { include: spell });
+      const stats = runMatch(config, 1, ['normal', 'normal'], ['balanced', 'balanced'], [loadout, loadout]);
+      expect(stats.spellCasts[spell] ?? 0, spell).toBeGreaterThan(0);
+    }
+  }, 60_000);
 
   it('the AI casts every spell in full matches (SPEC §7)', () => {
     const casts: Record<string, number> = {};

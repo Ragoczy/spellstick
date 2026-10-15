@@ -9,6 +9,7 @@ function frame(tick: number, extra: Partial<ReplayFrame> = {}): ReplayFrame {
     players: [],
     ball: { x: tick, y: 0, vel: { x: 0, y: 0 }, flight: null },
     wards: [],
+    walls: [],
     fx: [],
     cut: false,
     ...extra,

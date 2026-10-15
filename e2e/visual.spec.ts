@@ -21,6 +21,7 @@ test('title, team select, faceoff, spells, period break', async ({ page }) => {
   await page.getByRole('button', { name: 'Play' }).click();
   await page.locator('[data-team="ichthyocentaurs"][data-side="home"]').click();
   await page.screenshot({ path: 'test-results/team-select.png' });
+  await page.getByRole('button', { name: 'Choose spells' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
   await page.getByRole('button', { name: 'Face off!' }).click();
   await page.waitForTimeout(300);

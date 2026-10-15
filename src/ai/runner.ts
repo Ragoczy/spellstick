@@ -1,13 +1,17 @@
 import type { Controller } from './index';
 import {
   arenaFor,
+  blinkDirection,
+  blinkTarget,
   canCast,
   createRng,
   inShoveCone,
   nextFloat,
   isCharging,
   nextRange,
+  snareTarget,
   tapTicks,
+  wallPlacement,
   type AiLevel,
   type GoalGeometry,
   type InputCommand,
@@ -110,13 +114,12 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     const shotAim = shotTarget(state, me, attack, urgency);
     const throughTraffic = shotAim !== null && (urgency > 0 || nextFloat(rng) < rc.forceShotChancePerTick);
     if (shotAim && (throughTraffic || laneOpen(state, me.team, me.pos, shotAim, shotClearance, false))) {
-      // Sometimes put some bend on it first (Bent Shot arms this tick; the shot starts next tick).
-      if (
-        !me.bentArmed &&
-        canCast(me, 'bentShot', config) &&
-        nextFloat(rng) < rc.bentShotChance * level.spellEagerness
-      ) {
-        return { move: { x: 0, y: 0 }, aim: shotAim, cast: 'bentShot' };
+      // Sometimes arm a shot spell first: Misdirection (bentShot) or Pinpoint. It arms this
+      // tick; the shot starts next tick.
+      const shotSpells = (['bentShot', 'pinpoint'] as const).filter((s) => canCast(me, s, config));
+      if (shotSpells.length > 0 && nextFloat(rng) < rc.shotSpellChance * level.spellEagerness) {
+        const spell = shotSpells.length > 1 && nextFloat(rng) < 0.5 ? shotSpells[1]! : shotSpells[0]!;
+        return { move: { x: 0, y: 0 }, aim: shotAim, cast: spell };
       }
       const d = dist(attack.mouth, me.pos);
       const fullCharge = ticks(config.shot.fullChargeSeconds);
@@ -140,6 +143,10 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     if (carryTicks > ticks(rc.minHoldSeconds)) {
       const mate = bestPassTarget(state, me, attack, stuck || pressured || noProgress);
       if (mate) {
+        // Tailwind first (it arms this tick; the pass comes next): faster, and nobody can pick it off.
+        if (canCast(me, 'tailwind', config) && nextFloat(rng) < rc.tailwindChance * level.spellEagerness) {
+          return { move: { x: 0, y: 0 }, aim: mate.pos, cast: 'tailwind' };
+        }
         plan = { kind: 'releasePass', aim: mate.pos };
         return { move: { x: 0, y: 0 }, aim: mate.pos, primary: true };
       }
@@ -231,7 +238,13 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
       const d = dist(attack.mouth, q.pos);
       if (!desperate && d > myDist - rc.passAdvance) continue;
       if (dist(q.pos, me.pos) > config.pass.maxAssistRange) continue;
-      if (!laneOpen(state, me.team, me.pos, q.pos, level.passLaneClearance, true)) continue;
+      // An armed Tailwind can't be picked off, so a crowded lane doesn't matter.
+      if (
+        me.armed !== 'tailwind' &&
+        !laneOpen(state, me.team, me.pos, q.pos, level.passLaneClearance, true)
+      ) {
+        continue;
+      }
       const space = Math.min(6, nearestOpponentDist(state, q));
       if (space < 1.5) continue;
       const score = space - d * 0.5;
@@ -369,14 +382,25 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
     carrying: boolean,
   ): InputCommand {
     let move = carrying ? cmd.move : spaceOut(state, me, cmd.move, rc.teammateSpacing);
-    move = avoidGoals(me.pos, move, arenaFor(config), config.player.radius + 0.2, rc.goalLookahead);
+    // Chasing a loose ball that's closer than the look-ahead: only steer around a goal frame
+    // that's actually between us and it. A ball resting against the back of a net would
+    // otherwise sit inside the safety margin, and we'd slide past it forever.
+    const toBall = chaseTarget ? dist(me.pos, chaseTarget) : Infinity;
+    move =
+      toBall < rc.goalLookahead
+        ? avoidGoals(me.pos, move, arenaFor(config), config.player.radius, toBall)
+        : avoidGoals(me.pos, move, arenaFor(config), config.player.radius + 0.2, rc.goalLookahead);
     // Never step into the opponent's crease (SPEC §4.4).
     const attack = attackGoal(config, me.team);
     move = avoidCircle(me.pos, move, attack.mouth, attack.creaseRadius + rc.creaseMargin, rc.goalLookahead);
     return { ...cmd, move };
   }
 
+  /** The loose ball this runner is going for this tick, if any (see polish). */
+  let chaseTarget: Vec2 | null = null;
+
   function decideRaw(state: Readonly<MatchState>, me: Player): InputCommand {
+    chaseTarget = null;
     const id = me.id;
     const attack = attackGoal(config, me.team);
     const defend = defendGoal(config, me.team);
@@ -411,6 +435,7 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
         if (hit) return hit;
       }
       const lead = { x: ball.pos.x + ball.vel.x * 0.3, y: ball.pos.y + ball.vel.y * 0.3 };
+      chaseTarget = ball.pos;
       return { move: seek(me.pos, lead, 1), aim: ball.pos };
     }
 
@@ -418,13 +443,19 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
   }
 
   /**
-   * Situational spells (SPEC §7: "not on cooldown spam"): Hex Shove at a carrier or a
-   * defender crowding us, or in a loose-ball fight; Quickstep for a breakaway or a race to
-   * a loose ball. (Bent Shot is decided with the shot itself.)
+   * Situational spells (SPEC §7: "not on cooldown spam"), from whichever three this runner
+   * carries: Hex Shove (Thunderclap) or Snare at a dangerous carrier, or in a loose-ball fight;
+   * Ice Wall between a shooter and our goal; Quickstep (Burst of Speed) for a breakaway or a
+   * race to a loose ball; Blink to get past a defender or win a race; Stone Skin and Glamour
+   * Self for a crowded carrier. (Misdirection, Pinpoint, and Tailwind are decided with the shot
+   * or pass itself.) `cmd` is what this runner is about to do; a Blink goes its way.
    */
-  function chooseSpell(state: Readonly<MatchState>, me: Player): InputCommand['cast'] {
+  function chooseSpell(state: Readonly<MatchState>, me: Player, cmd: InputCommand): InputCommand['cast'] {
     const ball = state.ball;
     const eager = level.spellEagerness;
+    const ourGoal = defendGoal(config, me.team);
+    const threatening = (c: Player) =>
+      isCharging(c, config) || dist(c.pos, ourGoal.mouth) < rc.hexShoveThreatDistance;
     if (canCast(me, 'hexShove', config)) {
       for (const o of state.players) {
         if (o.team === me.team || o.role === 'goalie' || o.staggerTicks > 0 || !inShoveCone(me, o, config))
@@ -442,8 +473,43 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
         if (weight > 0 && nextFloat(rng) < rc.hexShoveChancePerTick * eager * weight) return 'hexShove';
       }
     }
-    // Quickstep only with mana to spare for a Hex Shove afterward.
-    const reserve = config.spells.quickstep.cost + config.spells.hexShove.cost;
+    if (canCast(me, 'snare', config)) {
+      const t = snareTarget(state as MatchState, me, config);
+      if (t && t.rootTicks === 0 && t.staggerTicks === 0) {
+        const theyCarry = ball.carrier === t.id;
+        const looseFight =
+          ball.carrier === null && ball.flight === null && dist(t.pos, ball.pos) < dist(me.pos, ball.pos);
+        const weight = theyCarry ? (threatening(t) ? 3 : 0.5) : looseFight ? 0.3 : 0;
+        if (weight > 0 && nextFloat(rng) < rc.snareChancePerTick * eager * weight) return 'snare';
+      }
+    }
+    const theirCarrier = ball.carrier !== null ? state.players[ball.carrier]! : null;
+    if (
+      canCast(me, 'iceWall', config) &&
+      theirCarrier &&
+      theirCarrier.team !== me.team &&
+      threatening(theirCarrier)
+    ) {
+      const wall = wallPlacement(me, arenaFor(config), config);
+      if (
+        wall &&
+        segmentsCross(wall.a, wall.b, theirCarrier.pos, ourGoal.mouth) &&
+        nextFloat(rng) < rc.iceWallChancePerTick * eager
+      ) {
+        return 'iceWall';
+      }
+    }
+    // Under pressure with the ball: arm Tailwind, so the next pass gets out through traffic.
+    if (
+      ball.carrier === me.id &&
+      canCast(me, 'tailwind', config) &&
+      nearestOpponentDist(state, me) < rc.pressureRadius &&
+      nextFloat(rng) < rc.tailwindPressureChancePerTick * eager
+    ) {
+      return 'tailwind';
+    }
+    // Quickstep only with mana to spare afterward.
+    const reserve = config.spells.quickstep.cost + rc.quickstepReserve;
     if (canCast(me, 'quickstep', config) && me.quickstepTicks === 0 && me.mana >= reserve) {
       const attack = attackGoal(config, me.team);
       const breakaway =
@@ -469,6 +535,54 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
       )
         return 'quickstep';
     }
+    if (canCast(me, 'blink', config)) {
+      const dir = blinkDirection(me, cmd);
+      const presser = ball.carrier === me.id ? closestOpponent(state, me) : null;
+      // A defender close in front, in the way we want to go: Blink past them.
+      const escape =
+        presser !== null &&
+        dist(presser.pos, me.pos) < rc.pressureRadius &&
+        (presser.pos.x - me.pos.x) * dir.x + (presser.pos.y - me.pos.y) * dir.y > 0;
+      let race = false;
+      if (
+        ball.carrier === null &&
+        ball.flight === null &&
+        dist(me.pos, ball.pos) < rc.quickstepRaceDistance * 2
+      ) {
+        const rival = closestOpponent(state, me, ball.pos);
+        race = rival !== null && dist(rival.pos, ball.pos) < dist(me.pos, ball.pos);
+      }
+      const chancePerTick = escape ? rc.blinkEscapeChancePerTick : race ? rc.blinkRaceChancePerTick : 0;
+      if (
+        chancePerTick > 0 &&
+        nextFloat(rng) < chancePerTick * eager &&
+        blinkTarget(state as MatchState, me, dir, arenaFor(config), config)
+      ) {
+        return 'blink';
+      }
+    }
+    // A carrier about to be hit: Stone Skin or Glamour Self. Mostly when a check dash starts at
+    // them; now and then when a defender with a check ready is right on top of them.
+    if (ball.carrier === me.id && me.stoneTicks === 0 && me.images === 0) {
+      let p = 0;
+      for (const o of state.players) {
+        if (o.team === me.team || o.role !== 'runner') continue;
+        const d = dist(o.pos, me.pos);
+        const dashingAtMe =
+          o.dashTicks > 0 &&
+          d < rc.protectRange &&
+          (me.pos.x - o.pos.x) * o.dashDir.x + (me.pos.y - o.pos.y) * o.dashDir.y > 0;
+        if (dashingAtMe) p = Math.max(p, rc.protectDashChance);
+        else if (o.checkCooldown === 0 && d < rc.protectCrowdRange)
+          p = Math.max(p, rc.protectCrowdChancePerTick);
+      }
+      if (p > 0) {
+        const ready = (['stoneSkin', 'glamourSelf'] as const).filter((s) => canCast(me, s, config));
+        if (ready.length > 0 && nextFloat(rng) < p * eager) {
+          return ready.length > 1 && nextFloat(rng) < 0.5 ? ready[1]! : ready[0]!;
+        }
+      }
+    }
     return undefined;
   }
 
@@ -480,10 +594,16 @@ export function createRunnerAI(config: SimConfig, seed: number, level: AiLevel):
       if (state.phase !== 'live' || me.staggerTicks > 0) return IDLE;
       const cmd = polish(state, me, decideRaw(state, me), state.ball.carrier === id);
       if (cmd.cast) return cmd;
-      const spell = chooseSpell(state, me);
+      const spell = chooseSpell(state, me, cmd);
       return spell ? { ...cmd, cast: spell } : cmd;
     },
   };
+}
+
+/** True if segments ab and cd cross. */
+function segmentsCross(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+  const side = (o: Vec2, q: Vec2, r: Vec2) => (q.x - o.x) * (r.y - o.y) - (q.y - o.y) * (r.x - o.x);
+  return side(c, d, a) * side(c, d, b) < 0 && side(a, b, c) * side(a, b, d) < 0;
 }
 
 function closestOpponent(state: Readonly<MatchState>, me: Player, to: Vec2 = me.pos): Player | null {

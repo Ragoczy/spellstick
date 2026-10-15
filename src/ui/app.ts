@@ -1,7 +1,15 @@
 import type Phaser from 'phaser';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId } from '../content/teams';
 import { MatchScene, SCENE_EVENTS, type DrillUpdate, type MatchSetup } from '../render/MatchScene';
-import { DRILLS, makeConfig, type Difficulty, type MatchState, type SimEvent } from '../sim';
+import {
+  DEFAULT_LOADOUT,
+  DRILLS,
+  isLoadout,
+  makeConfig,
+  type Difficulty,
+  type MatchState,
+  type SimEvent,
+} from '../sim';
 import { clipId } from '../content/announcer';
 import { LESSONS, TRAINING_TEXT } from '../content/training';
 import { VOICE_CLIPS } from '../content/announcerVoice';
@@ -36,6 +44,7 @@ import {
   reportScreen,
   resultsScreen,
   settingsScreen,
+  spellsScreen,
   teamSelectScreen,
   titleScreen,
   trainingDoneScreen,
@@ -277,6 +286,24 @@ export class App {
           this.sfx.play('click');
           this.selection = sel;
           saveSelection(sel);
+          this.showSpells();
+        },
+      }),
+      this.click(() => this.showTitle()),
+    );
+  }
+
+  /** Choose your spells (M10), then the controls card before your first match, then the match. */
+  private showSpells(): void {
+    const back = this.click(() => this.showTeamSelect());
+    this.show(
+      spellsScreen(this.selection.spells, {
+        back,
+        start: (spells) => {
+          this.sfx.unlock();
+          this.sfx.play('click');
+          this.selection = { ...this.selection, spells };
+          saveSelection(this.selection);
           if (this.seenControls) this.startMatch();
           else {
             this.seenControls = true;
@@ -285,12 +312,12 @@ export class App {
                 this.click(() => this.startMatch()),
                 'Face off!',
               ),
-              this.click(() => this.showTeamSelect()),
+              this.click(() => this.showSpells()),
             );
           }
         },
       }),
-      this.click(() => this.showTitle()),
+      back,
     );
   }
 
@@ -518,13 +545,20 @@ function localStorageOrNull(): Pick<Storage, 'getItem' | 'setItem'> {
 }
 
 function loadSelection(): TeamSelection {
-  const fallback: TeamSelection = { home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal' };
+  const fallback: TeamSelection = {
+    home: DEFAULT_HOME,
+    away: DEFAULT_AWAY,
+    difficulty: 'normal',
+    spells: [...DEFAULT_LOADOUT],
+  };
   try {
     const raw = JSON.parse(localStorage.getItem(SELECTION_KEY) ?? 'null') as Partial<TeamSelection> | null;
     const isTeam = (t: unknown): t is TeamId => typeof t === 'string' && t in TEAMS;
     const isDiff = (d: unknown): d is Difficulty => d === 'easy' || d === 'normal' || d === 'hard';
     if (raw && isTeam(raw.home) && isTeam(raw.away) && raw.home !== raw.away && isDiff(raw.difficulty)) {
-      return { home: raw.home, away: raw.away, difficulty: raw.difficulty };
+      // Spells came in M10: a choice saved before then keeps its teams and gets the starting three.
+      const spells = isLoadout(raw.spells) ? raw.spells : fallback.spells;
+      return { home: raw.home, away: raw.away, difficulty: raw.difficulty, spells };
     }
   } catch {
     // No storage, or junk in it: use the defaults.

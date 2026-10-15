@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-10-15',
+    title: 'Choose your spells',
+    items: [
+      'Ten spells now, from the card game. Pick three before each match: they go on Q, E, and R (X, Y, B).',
+      'New: Pinpoint, Blink, Snare, Ice Wall, Stone Skin, Tailwind, and Glamour Self.',
+      'Hex Shove is now Thunderclap, Quickstep is Burst of Speed, and Bent Shot is Misdirection.',
+    ],
+  },
+  {
+    date: '2026-10-15',
     title: 'Training remembers, and two teams',
     items: [
       'Training remembers the lessons you finish and picks up where you left off.',

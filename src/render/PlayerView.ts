@@ -33,9 +33,20 @@ export interface PlayerDrawState {
   checkReady: boolean;
   /** Quickstep is running. */
   quickstep: boolean;
-  /** Bent Shot is armed. */
-  bentArmed: boolean;
+  /** A shot or pass spell is armed (Misdirection, Pinpoint, Tailwind). */
+  armed: boolean;
+  /** Pinned in place by a Snare. */
+  rooted: boolean;
+  /** Stone Skin is up. */
+  stone: boolean;
+  /** Glamour Self illusions running beside them. */
+  images: number;
 }
+
+/** Illusions are drawn this see-through. */
+const IMAGE_ALPHA = 0.35;
+/** Stone Skin's ring color: grey stone shot through with gold. */
+const STONE_COLOR = 0xb8a27a;
 
 /**
  * Placeholder art for one player: colored disc, stick line, jersey number. Sprite-swappable later.
@@ -50,6 +61,8 @@ export class PlayerView {
   private readonly marker: Phaser.GameObjects.Triangle;
   private readonly fx: Phaser.GameObjects.Graphics;
   private fxDrawn = false;
+  /** Glamour Self: see-through copies of this player, one per illusion. */
+  private readonly ghosts: (Phaser.GameObjects.Image | Phaser.GameObjects.Arc)[] = [];
   /** Retro look only: the witch sprite, its shadow, and walk-cycle state. */
   private readonly sprite?: Phaser.GameObjects.Image;
   private readonly shadow?: Phaser.GameObjects.Ellipse;
@@ -102,6 +115,15 @@ export class PlayerView {
         .setFillStyle(RETRO_PALETTE.stick)
         .setStrokeStyle();
     }
+    for (let i = 0; i < config.spells.glamourSelf.images; i++) {
+      const ghost = this.sprite
+        ? scene.add
+            .image(0, 0, this.frames[0])
+            .setScale(PIX)
+            .setDisplayOrigin(SPRITE_ORIGIN.x, SPRITE_ORIGIN.y)
+        : scene.add.circle(0, 0, view.len(config.player.radius), color);
+      this.ghosts.push(ghost.setAlpha(IMAGE_ALPHA).setVisible(false));
+    }
   }
 
   update(s: PlayerDrawState): void {
@@ -115,7 +137,8 @@ export class PlayerView {
     this.stick.setTo(sx, sy, hx, hy);
     this.head.setPosition(hx, hy);
 
-    const needFx = s.charge > 0 || s.passTarget || s.staggered || s.quickstep || s.bentArmed;
+    const needFx =
+      s.charge > 0 || s.passTarget || s.staggered || s.quickstep || s.armed || s.rooted || s.stone;
     if (needFx || this.fxDrawn) this.fx.clear();
     this.fxDrawn = needFx;
     if (s.charge > 0) {
@@ -139,11 +162,22 @@ export class PlayerView {
       this.fx.fillStyle(PALETTE.mana, 0.18);
       this.fx.fillCircle(sx, sy, r + 7);
     }
-    if (s.bentArmed) {
-      // Bent Shot armed: the stick head pulses gold.
+    if (s.armed) {
+      // A shot or pass spell armed: the stick head pulses gold.
       const pulse = 0.5 + 0.5 * Math.sin(this.body.scene.time.now / 110);
       this.fx.fillStyle(PALETTE.mana, 0.35 + 0.4 * pulse);
       this.fx.fillCircle(hx, hy, this.view.len(0.28 + 0.12 * pulse));
+    }
+    if (s.rooted) {
+      // Snared: gold bindings round the feet.
+      this.fx.lineStyle(3, PALETTE.mana, 0.9);
+      this.fx.strokeEllipse(sx, sy + r * 0.7, r * 2.6, r * 1.1);
+      this.fx.strokeEllipse(sx, sy + r * 0.7, r * 1.8, r * 0.7);
+    }
+    if (s.stone) {
+      // Stone Skin: a thick stone ring.
+      this.fx.lineStyle(4, STONE_COLOR, 0.95);
+      this.fx.strokeCircle(sx, sy, r + 5);
     }
     if (s.staggered) {
       // Little orbiting stars: dazed.
@@ -156,6 +190,7 @@ export class PlayerView {
     }
 
     if (this.sprite && this.shadow) this.updateSprite(s, sx, sy);
+    this.updateGhosts(s, sx, sy);
     this.body.setPosition(sx, sy).setAlpha(s.staggered ? 0.65 : 1);
     this.label.setPosition(sx, sy);
     this.marker.setVisible(s.controlled);
@@ -164,6 +199,26 @@ export class PlayerView {
       // Retro: sit the marker above the hat.
       if (this.sprite) this.marker.setY(snap(sy) - PIX * (SPRITE_ORIGIN.y + 4));
     }
+  }
+
+  /** Glamour Self: the illusions run either side of the player, square to where she faces. */
+  private updateGhosts(s: PlayerDrawState, sx: number, sy: number): void {
+    const off = this.view.len(this.config.spells.glamourSelf.spacing);
+    this.ghosts.forEach((ghost, i) => {
+      const show = i < s.images;
+      ghost.setVisible(show);
+      if (!show) return;
+      const side = i % 2 === 0 ? 1 : -1;
+      const gx = sx - Math.sin(s.facing) * off * side;
+      const gy = sy + Math.cos(s.facing) * off * side;
+      ghost.setPosition(this.sprite ? snap(gx) : gx, this.sprite ? snap(gy) : gy);
+      if (this.sprite && ghost instanceof Phaser.GameObjects.Image) {
+        ghost
+          .setTexture(this.sprite.texture.key)
+          .setFlipX(this.sprite.flipX)
+          .setDepth(this.sprite.depth - 0.001);
+      }
+    });
   }
 
   /** Retro look: place the pixel witch on the art grid, face her, step the walk cycle, sort by y. */
@@ -191,6 +246,7 @@ export class PlayerView {
 
   destroy(): void {
     for (const o of [this.stick, this.head, this.body, this.label, this.marker, this.fx]) o.destroy();
+    for (const g of this.ghosts) g.destroy();
     this.sprite?.destroy();
     this.shadow?.destroy();
   }

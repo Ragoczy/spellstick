@@ -330,3 +330,62 @@ export function formatStyleTable(
       : '  styles: OK',
   ].join('\n');
 }
+
+/** One spell's record in a `--spell-edges` run (M10): matches where its team always carried it. */
+export interface SpellEdge {
+  spell: string;
+  games: number;
+  /** Games the team carrying it won and lost. */
+  wins: number;
+  losses: number;
+  /** Times it was cast. */
+  casts: number;
+  goals: number;
+}
+
+/**
+ * Win rate (of decided games) every spell's team must stay within: no obvious pick, no dead pick.
+ * The design target is 42–58% over 400 games per spell; CI's quicker 300-game run carries about
+ * ±3% of noise per spell, so the strict check allows 40–60% (see the decisions log).
+ */
+export const SPELL_WIN_RATE_RANGE = [0.4, 0.6] as const;
+
+export function spellEdgeWarnings(edges: readonly SpellEdge[]): string[] {
+  const [lo, hi] = SPELL_WIN_RATE_RANGE;
+  const warnings: string[] = [];
+  for (const e of edges) {
+    const decided = e.wins + e.losses;
+    const rate = decided > 0 ? e.wins / decided : 0.5;
+    if (rate < lo || rate > hi) {
+      warnings.push(
+        `${e.spell}: its team wins ${(rate * 100).toFixed(1)}% (allowed ${Math.round(lo * 100)}–${Math.round(hi * 100)}%)`,
+      );
+    }
+    if (e.casts === 0) warnings.push(`${e.spell} was never cast`);
+  }
+  return warnings;
+}
+
+export function formatSpellEdges(
+  edges: readonly SpellEdge[],
+  meta: { gamesPerSpell: number; elapsedMs: number },
+): string {
+  const rows = [...edges]
+    .sort((a, b) => b.wins / Math.max(1, b.wins + b.losses) - a.wins / Math.max(1, a.wins + a.losses))
+    .map((e) => {
+      const g = Math.max(1, e.games);
+      return (
+        `  ${e.spell.padEnd(14)}${String(e.games).padStart(6)}  ${pct(e.wins, e.wins + e.losses).padStart(6)}` +
+        `${(e.casts / g).toFixed(1).padStart(9)}${(e.goals / g).toFixed(2).padStart(9)}`
+      );
+    });
+  const warnings = spellEdgeWarnings(edges);
+  return [
+    `Spell edges — ${meta.gamesPerSpell} games per spell, its team against a team without it, sides alternating (${(meta.elapsedMs / 1000).toFixed(1)} s)`,
+    `  spell          games    win%  casts/g  goals/g`,
+    ...rows,
+    warnings.length > 0
+      ? `  SPELL WARNINGS:\n${warnings.map((w) => `    - ${w}`).join('\n')}`
+      : '  spells: OK',
+  ].join('\n');
+}

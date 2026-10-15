@@ -9,12 +9,24 @@ import { degToRad, rotate } from './vec';
 
 /** Starts a check dash if the player asked for one and can throw it. */
 export function startCheck(p: Player, input: InputCommand, config: SimConfig): void {
-  if (!input.check || p.checkCooldown > 0 || p.staggerTicks > 0 || p.dashTicks > 0) return;
+  if (!input.check || p.checkCooldown > 0 || p.staggerTicks > 0 || p.dashTicks > 0 || p.rootTicks > 0) return;
   const mlen = Math.hypot(input.move.x, input.move.y);
   p.dashDir = mlen > 0.1 ? { x: input.move.x / mlen, y: input.move.y / mlen } : facingDir(p);
   p.dashTicks = secondsToTicks(config.check.dashSeconds, config);
   p.dashHit = false;
   p.checkCooldown = secondsToTicks(config.check.cooldownSeconds, config);
+}
+
+/**
+ * Glamour Self (M10): if `target` has illusions up, a hit meant for them (a check, Thunderclap,
+ * or Snare from `by`) may find an illusion instead. One illusion fades and the hit does nothing.
+ * Returns true if an illusion took it.
+ */
+export function illusionTakesHit(state: MatchState, target: Player, by: number, config: SimConfig): boolean {
+  if (target.images <= 0 || !chance(state.rng, config.spells.glamourSelf.imageHitChance)) return false;
+  if (--target.images === 0) target.imageTicks = 0;
+  state.events.push({ type: 'imagePop', playerId: target.id, by });
+  return true;
 }
 
 /** True if a goalie is inside their own crease, where they can't be hit (SPEC §4.6). */
@@ -57,6 +69,14 @@ export function resolveChecks(state: MatchState, arena: ArenaGeometry, config: S
       state.events.push({ type: 'checkBounce', playerId: p.id, goalieId: target.id });
       continue;
     }
+    // Glamour Self: the dash goes through an illusion. Stone Skin: the target doesn't budge.
+    if (illusionTakesHit(state, target, p.id, config)) continue;
+    if (target.stoneTicks > 0) {
+      p.vel.x *= cc.checkerKeep;
+      p.vel.y *= cc.checkerKeep;
+      state.events.push({ type: 'stoneBlock', playerId: target.id, by: p.id });
+      continue;
+    }
 
     target.vel.x += p.dashDir.x * cc.knockbackSpeed;
     target.vel.y += p.dashDir.y * cc.knockbackSpeed;
@@ -82,9 +102,10 @@ export function resolveChecks(state: MatchState, arena: ArenaGeometry, config: S
   }
 }
 
-/** Puts a player out of action for at least `ticks`: no control, no stick, charge lost. */
+/** Puts a player out of action for at least `ticks`: no control, no stick, charge lost; ends a Snare. */
 export function stagger(p: Player, ticks: number): void {
   p.staggerTicks = Math.max(p.staggerTicks, ticks);
+  p.rootTicks = 0; // a hit knocks you free of a Snare
   p.stickCooldown = Math.max(p.stickCooldown, ticks);
   p.primaryTicks = 0;
   p.dashTicks = 0;

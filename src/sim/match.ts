@@ -4,6 +4,7 @@ import { tryScoop, updateBall } from './ball';
 import { resolveChecks, startCheck, stagger } from './checks';
 import { castSpell, NO_COOLDOWNS, tickSpellState } from './spells';
 import type { SimConfig } from './config';
+import { resolveContact, segmentContact } from './physics';
 import { movePlayer, separatePlayers, steer, updateFacing } from './players';
 import { createRng } from './rng';
 import {
@@ -16,7 +17,15 @@ import {
   stepFaceoff,
   tickGameClock,
 } from './rules';
-import { NO_INPUT, type InputCommand, type MatchState, type Player, type RosterEntry } from './types';
+import {
+  DEFAULT_LOADOUT,
+  NO_INPUT,
+  type InputCommand,
+  type MatchState,
+  type Player,
+  type RosterEntry,
+  type RunnerSpell,
+} from './types';
 
 export { facingDir, stickHead } from './players';
 export { scoopChance } from './ball';
@@ -28,6 +37,8 @@ export interface MatchOptions {
    * at center (drills and unit tests). Default 'live'.
    */
   start?: 'faceoff' | 'live';
+  /** Each team's three spells (M10), shared by its runners. Default: the starting three. */
+  loadouts?: readonly [readonly RunnerSpell[], readonly RunnerSpell[]];
 }
 
 /** Creates a fresh match. Same seed + config + roster + inputs ⇒ same match. */
@@ -37,6 +48,7 @@ export function createMatch(
   roster: readonly RosterEntry[] = [],
   options: MatchOptions = {},
 ): MatchState {
+  const loadouts = options.loadouts ?? [DEFAULT_LOADOUT, DEFAULT_LOADOUT];
   const state: MatchState = {
     tick: 0,
     rng: createRng(seed),
@@ -67,11 +79,18 @@ export function createMatch(
       dashHit: false,
       staggerTicks: 0,
       mana: config.mana.max,
+      spells: (r.role ?? 'runner') === 'runner' ? [...loadouts[r.team]] : [],
       spellCooldowns: { ...NO_COOLDOWNS },
       quickstepTicks: 0,
-      bentArmed: false,
+      armed: null,
+      rootTicks: 0,
+      snareImmuneTicks: 0,
+      stoneTicks: 0,
+      images: 0,
+      imageTicks: 0,
       wardTicks: 0,
     })),
+    walls: [],
     events: [],
   };
   resetPositions(state);
@@ -122,6 +141,7 @@ export function stepMatch(
 
   const arena = arenaFor(config);
   const dt = 1 / config.tickHz;
+  meltWalls(state);
 
   for (const p of state.players) {
     if (p.stickCooldown > 0) p.stickCooldown--;
@@ -138,9 +158,11 @@ export function stepMatch(
     updateFacing(p, input);
     handleActions(state, p, input, config);
     startCheck(p, input, config);
-    if (input.cast) castSpell(state, p, input.cast, arena, config);
+    if (input.cast) castSpell(state, p, input.cast, input, arena, config);
     if (p.dashTicks > 0) {
       p.vel = { x: p.dashDir.x * config.check.dashSpeed, y: p.dashDir.y * config.check.dashSpeed };
+    } else if (p.rootTicks > 0) {
+      p.vel = { x: 0, y: 0 }; // Snared: pinned in place (aiming, passing, and shooting still work)
     } else {
       steer(p, input, speedMultiplier(state, p, config), config, dt);
     }
@@ -154,11 +176,30 @@ export function stepMatch(
   }
   resolveChecks(state, arena, config);
   separatePlayers(state.players, arena, config);
+  keepOutOfWalls(state, config);
   updateBall(state, arena, config, dt);
   if (state.phase !== 'live') return; // a goal was scored; the clocks stop
   tryScoop(state, config);
   applyLiveRules(state, arena, config);
   tickGameClock(state, config);
+}
+
+/** Ice Walls (M10) melt: each standing one loses a tick, and gone ones are removed. */
+function meltWalls(state: MatchState): void {
+  if (state.walls.length === 0) return;
+  for (const w of state.walls) w.ticks--;
+  state.walls = state.walls.filter((w) => w.ticks > 0);
+}
+
+/** Players can't walk through an Ice Wall: push them out and stop them against it. */
+function keepOutOfWalls(state: MatchState, config: SimConfig): void {
+  const reach = config.player.radius + config.spells.iceWall.halfThickness;
+  for (const w of state.walls) {
+    for (const p of state.players) {
+      const c = segmentContact(p.pos, reach, w);
+      if (c) resolveContact(p.pos, p.vel, c, 0);
+    }
+  }
 }
 
 function speedMultiplier(state: MatchState, p: Player, config: SimConfig): number {

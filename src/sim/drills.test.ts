@@ -160,6 +160,8 @@ describe('training drills (M9): scoring', () => {
           maxTicks: 84,
           from: { x: 0, y: 0 },
           spin,
+          savePenalty: 0,
+          tailwind: false,
         },
         lastTouch: 0,
       },

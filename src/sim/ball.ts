@@ -93,6 +93,14 @@ export function updateBall(state: MatchState, arena: ArenaGeometry, config: SimC
         if (impact > 0) ball.flight = null;
       }
     }
+    // Ice Walls (M10): the ball bounces off, like the boards.
+    for (const wall of state.walls) {
+      const c = segmentContact(ball.pos, bc.radius + config.spells.iceWall.halfThickness, wall);
+      if (!c) continue;
+      const impact = resolveContact(ball.pos, ball.vel, c, config.spells.iceWall.restitution);
+      hardestBoardHit = Math.max(hardestBoardHit, impact);
+      if (impact > 0) ball.flight = null;
+    }
 
     if (ball.flight && resolveFlightContacts(state, prev, config)) break;
   }
@@ -113,7 +121,9 @@ function homeTowardReceiver(state: MatchState, flight: Flight, config: SimConfig
   let delta = Math.atan2(ty, tx) - current;
   while (delta > Math.PI) delta -= 2 * Math.PI;
   while (delta < -Math.PI) delta += 2 * Math.PI;
-  const maxTurn = degToRad(config.pass.homingDegPerSec) * dt;
+  const homing =
+    config.pass.homingDegPerSec * (flight.tailwind ? config.spells.tailwind.homingMultiplier : 1);
+  const maxTurn = degToRad(homing) * dt;
   const turn = Math.max(-maxTurn, Math.min(maxTurn, delta));
   ball.vel = rotate(ball.vel, turn);
 }
@@ -167,9 +177,10 @@ function reachDistance(p: Player, prev: Vec2, pos: Vec2, config: SimConfig): num
 
 function resolvePass(state: MatchState, flight: Flight, prev: Vec2, config: SimConfig): boolean {
   const ball = state.ball;
+  // Nobody on the other side can get a stick on a Tailwind pass.
   const best = nearestWithFairTies(
     state,
-    state.players.filter((p) => p.stickCooldown === 0),
+    state.players.filter((p) => p.stickCooldown === 0 && (!flight.tailwind || p.team === flight.team)),
     (p) => {
       const reach = p.role === 'goalie' ? config.goalie.saveRadius : config.catch.radius;
       const d =
@@ -185,7 +196,9 @@ function resolvePass(state: MatchState, flight: Flight, prev: Vec2, config: SimC
   const t = Math.min(1, rel / cc.fastRelSpeed);
   const sameTeam = best.team === flight.team;
   const p = sameTeam
-    ? cc.chanceSlow + (cc.chanceFast - cc.chanceSlow) * t
+    ? flight.tailwind
+      ? 1
+      : cc.chanceSlow + (cc.chanceFast - cc.chanceSlow) * t
     : best.role === 'goalie'
       ? config.goalie.passInterceptChance
       : cc.interceptSlow + (cc.interceptFast - cc.interceptSlow) * t;
@@ -224,8 +237,9 @@ function resolveShot(state: MatchState, flight: Flight, prev: Vec2, config: SimC
         speed > 1e-6
           ? Math.abs((p.pos.x - ball.pos.x) * ball.vel.y - (p.pos.y - ball.pos.y) * ball.vel.x) / speed
           : d;
-      const bend = flight.spin !== 0 ? config.spells.bentShot.savePenalty : 0;
-      if (!chance(state.rng, saveChance(p, offset, speed, flight.from, config) - bend)) continue;
+      // Misdirection (a bending shot) and Pinpoint are harder to save.
+      if (!chance(state.rng, saveChance(p, offset, speed, flight.from, config) - flight.savePenalty))
+        continue;
       if (chance(state.rng, config.goalie.catchFraction)) {
         takePossession(state, p);
         state.events.push({ type: 'save', playerId: p.id, team: p.team, caught: true });

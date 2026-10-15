@@ -234,7 +234,10 @@ export const DEFAULT_CONFIG = {
     regenFree: 1.0,
   },
 
-  /** Spells (SPEC §6). Names and descriptions live in src/content/spells.ts. */
+  /**
+   * Spells (SPEC §6, M10). Names and descriptions live in src/content/spells.ts: `hexShove` is
+   * Thunderclap, `quickstep` Burst of Speed, and `bentShot` Misdirection.
+   */
   spells: {
     hexShove: {
       cost: 50,
@@ -250,21 +253,93 @@ export const DEFAULT_CONFIG = {
       looseSpeed: 6,
     },
     quickstep: {
-      cost: 30,
-      cooldownSeconds: 8,
-      durationSeconds: 2.5,
+      cost: 12,
+      cooldownSeconds: 7,
+      durationSeconds: 3,
       /** Top speed multiplier while active. */
-      speedMultiplier: 1.4,
+      speedMultiplier: 1.5,
     },
     bentShot: {
-      cost: 25,
+      cost: 30,
       cooldownSeconds: 5,
       /** The armed shot launches this far (degrees) off the aim line, then curves back onto it. */
       bendAngleDeg: 14,
       /** Curve is planned for at least this distance (m), so very close shots don't whip around. */
       minBendDistance: 4,
       /** Extra save-chance penalty for a bending shot: it's harder to read. */
-      savePenalty: 0.25,
+      savePenalty: 0.18,
+    },
+    /** Arms your next shot: no aim error, and harder to save. */
+    pinpoint: {
+      cost: 25,
+      cooldownSeconds: 6,
+      savePenalty: 0.2,
+    },
+    /** Teleports you the way you're moving (or aiming), ball and all. */
+    blink: {
+      cost: 40,
+      cooldownSeconds: 13,
+      /** How far (m), cut short at the boards, a goal, a crease you can't enter, or an Ice Wall... */
+      distance: 4,
+      /** ...checked every this many meters along the way. */
+      step: 0.25,
+      /** A Blink that can't go at least this far (m) isn't cast. */
+      minDistance: 1,
+    },
+    /**
+     * Pins the nearest opponent in a narrow cone in place and binds their stick: no shooting,
+     * catching, or scooping till it breaks, and a carrier may have the ball yanked loose toward you.
+     */
+    snare: {
+      cost: 40,
+      cooldownSeconds: 9,
+      range: 7,
+      coneHalfAngleDeg: 15,
+      /** After a Snare, its target can't be snared again for this long past the pin (s): no chain-snaring. */
+      immuneSeconds: 3,
+      /** Chance a snared carrier's ball comes loose, toward the caster at this speed (m/s). */
+      yankChance: 0.3,
+      yankSpeed: 6,
+      rootSeconds: 1.2,
+    },
+    /** A short wall in front of you that balls and players bounce off. */
+    iceWall: {
+      cost: 50,
+      cooldownSeconds: 16,
+      /** Its middle is this far in front of you (m), square to where your stick points... */
+      distance: 3,
+      /** ...this long (m) and this thick either side of its line (m)... */
+      length: 3,
+      halfThickness: 0.15,
+      /** ...for this long (s). */
+      durationSeconds: 2,
+      /** A ball keeps this fraction of its speed off the wall. */
+      restitution: 0.4,
+    },
+    /** For a moment, checks and Thunderclaps don't knock you back, daze you, or strip the ball. */
+    stoneSkin: {
+      cost: 15,
+      cooldownSeconds: 8,
+      durationSeconds: 3.5,
+    },
+    /** Arms your next pass: faster, farther, can't be intercepted, always caught. */
+    tailwind: {
+      cost: 25,
+      cooldownSeconds: 6,
+      speedMultiplier: 1.4,
+      airMultiplier: 1.4,
+      homingMultiplier: 1.5,
+    },
+    /** Illusions beside you that take hits meant for you (the card's images: 1–4 on a d6). */
+    glamourSelf: {
+      cost: 15,
+      cooldownSeconds: 10,
+      durationSeconds: 6,
+      images: 2,
+      /** Chance a check, Thunderclap, or Snare at you hits an illusion instead (one fades). */
+      imageHitChance: 4 / 6,
+      /** How far either side of you the illusions run (m), for drawing. */
+      spacing: 1.3,
     },
     ward: {
       cooldownSeconds: 240,
@@ -392,16 +467,41 @@ export const DEFAULT_CONFIG = {
       /** ...tripled against a carrier winding up a shot or within this distance (m) of our goal. */
       hexShoveThreatDistance: 9,
       /** Quickstep for a breakaway: carrying with this much open floor (m) toward goal... */
-      quickstepBreakawayDistance: 14,
+      quickstepBreakawayDistance: 9,
       /** ...and nobody within this distance (m) of us. */
-      quickstepBreakawaySpace: 4,
+      quickstepBreakawaySpace: 3,
       /** ...or racing an opponent to a loose ball that's this close (m). */
       quickstepRaceDistance: 6,
       /** Per-tick chances (times spellEagerness) of Quickstep in those two situations. */
       quickstepBreakawayChancePerTick: 0.01,
-      quickstepRaceChancePerTick: 0.0015,
-      /** Chance (times spellEagerness) of arming Bent Shot before a shot when it's ready. */
-      bentShotChance: 0.5,
+      quickstepRaceChancePerTick: 0.012,
+      /**
+       * Chance (times spellEagerness) of arming a shot spell before a shot when one is ready:
+       * Misdirection (`bentShot`) or Pinpoint, picked at random if both are.
+       */
+      shotSpellChance: 0.5,
+      /** Chance (times spellEagerness) of arming Tailwind before a pass... */
+      tailwindChance: 0.6,
+      /** ...and per tick while carrying under pressure, so it's ready (an armed Tailwind passes through crowded lanes). */
+      tailwindPressureChancePerTick: 0.002,
+      /** Per-tick chances (times spellEagerness) of Blink: to escape a defender in front, or in a loose-ball race. */
+      blinkEscapeChancePerTick: 0.003,
+      blinkRaceChancePerTick: 0.0008,
+      /** Per-tick chance (times spellEagerness) of Snare at an opponent in the cone; weighted like Hex Shove. */
+      snareChancePerTick: 0.0015,
+      /** Per-tick chance (times spellEagerness) of Ice Wall when it would stand between a shooter and our goal. */
+      iceWallChancePerTick: 0.02,
+      /**
+       * Stone Skin and Glamour Self, for a carrier about to be hit: chance (times spellEagerness)
+       * when an opponent starts a check dash at them from this close (m)...
+       */
+      protectRange: 3,
+      protectDashChance: 0.5,
+      /** ...and per tick while an opponent with a check ready is this close (m). */
+      protectCrowdRange: 1.8,
+      protectCrowdChancePerTick: 0.003,
+      /** Burst of Speed only with at least this much mana left over afterward. */
+      quickstepReserve: 40,
     },
     goalie: {
       /** Distance in front of the goal line the goalie patrols. */
@@ -435,7 +535,7 @@ export const DEFAULT_CONFIG = {
       },
       /** Hits hard and carries the ball: more checks, holds on longer, shoots through traffic, casts less. */
       physical: {
-        checkChance: 1.4,
+        checkChance: 1.3,
         spellEagerness: 0.7,
         holdSeconds: 1.5,
         passAdvance: 1.3,

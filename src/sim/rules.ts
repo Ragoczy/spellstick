@@ -34,7 +34,13 @@ export function resetPositions(state: MatchState): void {
     p.staggerTicks = 0;
     p.quickstepTicks = 0;
     p.wardTicks = 0;
+    p.rootTicks = 0;
+    p.snareImmuneTicks = 0;
+    p.stoneTicks = 0;
+    p.images = 0;
+    p.imageTicks = 0;
   }
+  state.walls = [];
   state.ball = { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, carrier: null, flight: null, lastTouch: null };
   state.faceoff = null;
   state.shotClock = { team: null, ticksLeft: state.shotClock.ticksLeft };

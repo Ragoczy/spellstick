@@ -4,11 +4,58 @@ import type { Vec2 } from './vec';
 
 export type { TeamIndex } from './arena';
 
-/** Spell ids (SPEC §6). Display names live in src/content/spells.ts. */
-export type SpellId = 'hexShove' | 'quickstep' | 'bentShot' | 'ward';
+/**
+ * Spell ids (SPEC §6, M10). Display names live in src/content/spells.ts: the first three are
+ * Thunderclap, Burst of Speed, and Misdirection (they kept the ids they had as Hex Shove,
+ * Quickstep, and Bent Shot), and Ward is the goalie's.
+ */
+export type SpellId =
+  | 'hexShove'
+  | 'quickstep'
+  | 'bentShot'
+  | 'pinpoint'
+  | 'blink'
+  | 'snare'
+  | 'iceWall'
+  | 'stoneSkin'
+  | 'tailwind'
+  | 'glamourSelf'
+  | 'ward';
 
-/** Runner spells in key order: Q, E, R. */
-export const RUNNER_SPELLS = ['hexShove', 'quickstep', 'bentShot'] as const satisfies readonly SpellId[];
+/** The ten spells a team picks its three from (M10), in display order. */
+export const SPELL_POOL = [
+  'hexShove',
+  'quickstep',
+  'bentShot',
+  'pinpoint',
+  'blink',
+  'snare',
+  'iceWall',
+  'stoneSkin',
+  'tailwind',
+  'glamourSelf',
+] as const satisfies readonly SpellId[];
+export type RunnerSpell = (typeof SPELL_POOL)[number];
+
+/** How many spells a runner carries: Q, E, R. */
+export const LOADOUT_SIZE = 3;
+
+/** The starting three: the original Hex Shove, Quickstep, and Bent Shot. */
+export const DEFAULT_LOADOUT: readonly RunnerSpell[] = ['hexShove', 'quickstep', 'bentShot'];
+
+/** Spells that arm the next shot or pass rather than acting at once. One can be armed at a time. */
+export type ArmedSpell = 'bentShot' | 'pinpoint' | 'tailwind';
+export const ARMED_SPELLS: readonly ArmedSpell[] = ['bentShot', 'pinpoint', 'tailwind'];
+
+/** An Ice Wall standing on the floor: a segment that balls and players bounce off. */
+export interface IceWall {
+  a: Vec2;
+  b: Vec2;
+  /** Ticks left before it melts. */
+  ticks: number;
+  /** Who raised it. */
+  playerId: number;
+}
 
 /**
  * What one controller (human or AI) asks one player to do this tick. The AI produces
@@ -50,8 +97,12 @@ export interface Flight {
   maxTicks: number;
   /** Where it was released (goalie reaction time scales with distance). */
   from: Vec2;
-  /** Bent Shot: how fast the flight direction turns (radians per second, signed); 0 = straight. */
+  /** Bent Shot (Misdirection): how fast the flight direction turns (radians per second, signed); 0 = straight. */
   spin: number;
+  /** Taken off the goalie's save chance: Misdirection or Pinpoint. */
+  savePenalty: number;
+  /** A Tailwind pass: faster, can't be intercepted, always caught by the passing team. */
+  tailwind: boolean;
 }
 
 export interface Ball {
@@ -98,12 +149,23 @@ export interface Player {
   staggerTicks: number;
   /** Runner mana (SPEC §6). Goalies don't use it. */
   mana: number;
+  /** The runner's three spells, in key order (Q, E, R). Empty for goalies. */
+  spells: RunnerSpell[];
   /** Ticks until each spell can be cast again. */
   spellCooldowns: Record<SpellId, number>;
-  /** Ticks of Quickstep left. */
+  /** Ticks of Quickstep (Burst of Speed) left. */
   quickstepTicks: number;
-  /** Bent Shot is armed: the next shot bends. */
-  bentArmed: boolean;
+  /** The spell waiting for the next shot (Misdirection, Pinpoint) or pass (Tailwind), if any. */
+  armed: ArmedSpell | null;
+  /** Ticks pinned in place by a Snare. */
+  rootTicks: number;
+  /** Ticks before this player can be snared again (the pin, plus a grace period). */
+  snareImmuneTicks: number;
+  /** Ticks of Stone Skin left: no knockback, daze, or strip. */
+  stoneTicks: number;
+  /** Glamour Self: illusions left, and ticks before they fade. */
+  images: number;
+  imageTicks: number;
   /** Goalie: ticks of Ward left. */
   wardTicks: number;
 }
@@ -166,6 +228,13 @@ export type SimEvent =
   | { type: 'cast'; playerId: number; team: TeamIndex; spell: SpellId }
   | { type: 'hexShove'; playerId: number; hits: number[]; loosened: boolean }
   | { type: 'wardBlock'; goalieId: number; team: TeamIndex }
+  | { type: 'blink'; playerId: number; from: Vec2; to: Vec2 }
+  | { type: 'snare'; playerId: number; targetId: number | null; loosened: boolean }
+  | { type: 'iceWall'; playerId: number; a: Vec2; b: Vec2 }
+  /** A check, Thunderclap, or Snare at `playerId` hit one of their illusions instead. */
+  | { type: 'imagePop'; playerId: number; by: number }
+  /** A check at `playerId` bounced off their Stone Skin. */
+  | { type: 'stoneBlock'; playerId: number; by: number }
   | { type: 'faceoffSet'; takers: [number, number] }
   | { type: 'whistle' }
   | {
@@ -197,6 +266,8 @@ export interface MatchState {
   score: [number, number];
   ball: Ball;
   players: Player[];
+  /** Ice Walls standing (M10). */
+  walls: IceWall[];
   /** Events emitted during the most recent tick only. */
   events: SimEvent[];
 }

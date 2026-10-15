@@ -233,7 +233,7 @@ button {
   cursor: not-allowed;
 }
 
-/* The title screen's footer: credit and "Report a problem". */
+/* The title screen's footer: credit, "Report a problem", Terms, and Privacy. */
 .site-footer {
   text-align: center;
   margin-top: 22px;
@@ -253,6 +253,12 @@ button {
 .link-btn:focus-visible {
   color: var(--gold);
   outline: none;
+}
+a.link-btn {
+  display: inline-block;
+}
+.policy-links {
+  margin-top: -6px;
 }
 
 /* Settings, Report a problem, and the unlink confirmation. */

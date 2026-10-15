@@ -5,6 +5,7 @@ import { LESSONS, TRAINING_TEXT } from '../content/training';
 import { DRILLS, type Difficulty } from '../sim';
 import type { AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
+import { PRIVACY_URL, TERMS_URL } from './links';
 import type { TeamTally } from './matchStats';
 import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
 import { fillControls } from './training';
@@ -78,8 +79,16 @@ export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
         "Set in the world of Daniel Kensington's Warlock series (Darkspace Press). A free fan game.",
       ),
       button('Report a problem', a.report, 'link-btn'),
+      ...policyLinks(),
     ),
   );
+}
+
+/** Terms of Service and Privacy Policy, opened in a new tab so a match in progress isn't lost. */
+function policyLinks(): HTMLAnchorElement[] {
+  const link = (label: string, href: string) =>
+    el('a', { class: 'link-btn', href, target: '_blank', rel: 'noopener noreferrer' }, label);
+  return [link('Terms of Service', TERMS_URL), link('Privacy Policy', PRIVACY_URL)];
 }
 
 /** Who's logged in (avatar, name, log out), or why to log in. */
@@ -144,6 +153,7 @@ export function settingsScreen(
       { class: 'settings-note' },
       `To report a problem or request help with your data, contact ${REPORT_EMAIL}.`,
     ),
+    el('p', { class: 'settings-note policy-links' }, ...policyLinks()),
     el(
       'div',
       { class: 'stack' },

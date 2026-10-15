@@ -25,6 +25,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     items: [
       'Report a problem from Settings or the link at the bottom of this screen. It opens an email to the Darkspace admins.',
       'Settings → Unlink my Discord account deletes your Spellstick data and logs you out. Your Discord account is not touched.',
+      'The Terms of Service and Privacy Policy are linked at the bottom of this screen and in Settings.',
     ],
   },
   {

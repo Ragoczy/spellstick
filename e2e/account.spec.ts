@@ -35,6 +35,25 @@ test('Report a problem: from the footer and from Settings, with the five categor
   await expect(page.locator('#settings')).toBeVisible();
 });
 
+test('Terms of Service and Privacy Policy: in the footer (even logged out) and in Settings', async ({
+  page,
+}) => {
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ status: 401, json: { error: 'unauthenticated' } }),
+  );
+  await page.goto('./');
+  for (const where of ['.site-footer', '#settings']) {
+    if (where === '#settings') await page.getByRole('button', { name: 'Settings' }).click();
+    const area = page.locator(where);
+    const terms = area.getByRole('link', { name: 'Terms of Service' });
+    const privacy = area.getByRole('link', { name: 'Privacy Policy' });
+    await expect(terms).toHaveAttribute('href', 'https://www.darkspace.press/games-terms/');
+    await expect(privacy).toHaveAttribute('href', 'https://www.darkspace.press/games-privacy/');
+    await expect(terms).toHaveAttribute('target', '_blank');
+    await expect(privacy).toHaveAttribute('target', '_blank');
+  }
+});
+
 test('logged out: Settings has Report a problem but no unlink', async ({ page }) => {
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ status: 401, json: { error: 'unauthenticated' } }),

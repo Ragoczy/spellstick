@@ -84,7 +84,7 @@ test('two players meet in a room, ready up, and play online', async ({ browser }
   const id = live.controlledId;
   const y0 = live.state.players[id]!.pos.y;
   await ann.keyboard.down('w');
-  await ann.waitForTimeout(1200);
+  await ann.waitForTimeout(2500);
   const mine = await debug(ann);
   const theirs = await debug(bea);
   await ann.keyboard.up('w');

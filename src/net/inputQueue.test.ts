@@ -38,6 +38,16 @@ describe('InputQueue', () => {
     expect(q.take(3)?.check).toBeUndefined();
   });
 
+  it('moves a player whose controls always arrive late (a lagging screen)', () => {
+    const q = new InputQueue(2);
+    q.push(at(1), 0);
+    q.take(1);
+    for (let now = 10; now < 60; now++) {
+      q.push(at(now - 5, { move: { x: 0, y: -1 } }), now); // 6 ticks late, every tick
+      expect(q.take(now + 1)!.move).toEqual({ x: 0, y: -1 });
+    }
+  });
+
   it('lets go of the sticks after a while with nothing new (a hidden tab)', () => {
     const q = new InputQueue(2);
     q.push(at(1, { primary: true }), 0);

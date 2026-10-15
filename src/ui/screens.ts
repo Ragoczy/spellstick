@@ -5,7 +5,7 @@ import { LESSONS, TRAINING_TEXT } from '../content/training';
 import { DRILLS, type Difficulty, type DrillId } from '../sim';
 import { DISCORD_SIGN_IN_MESSAGES, type AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
-import { PRIVACY_URL, SITE_ADDRESS, TERMS_URL } from './links';
+import { PRIVACY_URL, TERMS_URL } from './links';
 import type { TeamTally } from './matchStats';
 import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
 import { fillControls, nextUnfinished } from './training';
@@ -182,7 +182,7 @@ export function settingsScreen(
               ? el(
                   'p',
                   { class: 'settings-note' },
-                  `To unlink your Discord account, use Settings in the browser version at ${SITE_ADDRESS}.`,
+                  'To unlink your Discord account, open Spellstick in your web browser and use Settings there.',
                 )
               : button('Unlink my Discord account', a.unlink, 'btn danger'),
           ),

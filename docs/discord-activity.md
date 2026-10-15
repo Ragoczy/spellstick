@@ -83,9 +83,11 @@ join the server, or ask for the Players role) and the console has one warning:
 
 | Prefix | Target |
 |---|---|
-| `/` | `spellstick.games.darkspace.press` |
+| `/` | `ca-game-spellstick.proudbush-0a90b692.eastus2.azurecontainerapps.io` |
 
-That's the only one: the game makes no requests to other sites at runtime.
+That's the only one: the game makes no requests to other sites at runtime. The custom domain
+`spellstick.games.darkspace.press` isn't set up yet (no DNS record, not bound in Azure); once it
+is, the mapping can point there instead.
 
 ## Testing
 
@@ -96,7 +98,7 @@ that the title shows "Signing in through Discord…", and that a failed launch e
 
 To try it in Discord before deploying, run the built game locally (`npm run serve`), start a tunnel
 (`cloudflared tunnel --url http://localhost:5190`), and point the `/` mapping at the tunnel's host
-(no `https://`). Point it back at `spellstick.games.darkspace.press` afterwards.
+(no `https://`). Point it back at the container app's host afterwards.
 
 ## Developer Portal checklist (by hand, in order)
 
@@ -109,7 +111,7 @@ To try it in Discord before deploying, run the built game locally (`npm run serv
    `http://localhost:5190/api/auth/callback`, and the placeholder `https://127.0.0.1` (Discord's
    Activity guide requires one).
 4. **Installation > Installation Contexts:** User Install and Guild Install.
-5. **Activities > URL Mappings:** `/` > `spellstick.games.darkspace.press`.
+5. **Activities > URL Mappings:** `/` > `ca-game-spellstick.proudbush-0a90b692.eastus2.azurecontainerapps.io`.
 6. **Activities > Settings:** Enable Activities; Supported Platforms: Web and Desktop. Add the
    cover art under Art Assets.
 7. **App Testers:** add whoever should try it before it's public.

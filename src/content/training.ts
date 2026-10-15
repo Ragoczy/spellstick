@@ -89,6 +89,8 @@ export const TRAINING_TEXT = {
   menuIntro: 'Seven short lessons, one skill each. Start at the top, or pick one.',
   startAll: 'Start training',
   resume: 'Continue training',
+  /** Under the title screen's Training button until a lesson is finished. */
+  nudge: 'New? Start here: seven short lessons.',
   /** Marks a finished lesson in the list. */
   doneMark: '✓',
   doneLabel: 'done',

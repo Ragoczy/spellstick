@@ -113,6 +113,9 @@ Paul's call: "Turn items 1–3 (goal replays, team identities, training ground) 
   - [x] Drop the spellcraft style with it (no team plays it), and check the Wyverns vs Ichthyocentaurs matchup is still no one's obvious pick.
   - [x] Remember finished training lessons in this browser: a ✓ on each in the lesson list, and the main button continues from the first unfinished one. Unlinking clears it, and the unlink screen says so.
   - [x] Re-gate.
+- From Paul (2026-10-15): "two teams are fine, add the nudge".
+  - [x] Until a training lesson is finished in this browser, the title screen points new players at Training: the button glows and a line under it says "New? Start here: seven short lessons." Play stays the main button.
+  - [x] Re-gate.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

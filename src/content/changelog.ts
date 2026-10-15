@@ -16,6 +16,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     items: [
       'Training remembers the lessons you finish and picks up where you left off.',
       "The Willowmere Witches are gone: the Wyverns are Willowmere's team. Other teams will join later.",
+      'New to Spellstick? The Training button lights up until you finish a lesson.',
     ],
   },
   {

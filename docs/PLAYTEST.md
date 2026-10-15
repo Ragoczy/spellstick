@@ -1,24 +1,19 @@
-# Playtest notes — M9 re-gate: your M9 notes
+# Playtest notes — M9 re-gate: the Training nudge
 
 **Build:** https://spellstick.games.darkspace.press (the git SHA is in the bottom-right corner)
 
-## What changed since the last build
+## What changed
 
-- **The Willowmere Witches are gone.** The Wyverns are Willowmere's team, so team select now offers the Wyverns and the Ichthyocentaurs. The spec's canon notes say so too.
-- **Two teams, evenly matched.** The Wyverns hit hard and carry the ball, and the Ichthyocentaurs pass. With the spell-heavy style gone, the Wyverns were winning 54% of AI-vs-AI games, so they now hit a little less often. It's 50% to 50% now, and they still play differently: about 49 vs 39 hits, 5 vs 10 passes, and 19 vs 26 spells a game.
-- **Training remembers.** Finished lessons get a ✓ in the lesson list, and the main button says "Continue training" and starts at the first one you haven't finished. Skipped lessons don't count. It's saved in this browser only, and Unlink my Discord account clears it (the unlink screen now lists it).
-- **Terms of Service and Privacy Policy** links are in the title footer and in Settings (your work, now committed). Your `?auth=true` guest mode is still uncommitted on your machine.
-- Replays, team-style blurbs, and everything else are as you left them.
+- **New players are pointed at Training.** Until you finish a training lesson in this browser, the title screen's Training button glows gold and says "New? Start here: seven short lessons." underneath. Play is still the main button, so Enter or A still starts a match.
+- Finish any lesson and the nudge is gone for good. Skipping a lesson doesn't count. Unlinking your Discord account clears training progress, so the nudge comes back after that.
+- Team select stays as it is with two teams.
 
 ## How to try it
 
-1. Open team select: just the Wyverns and the Ichthyocentaurs, each with its blurb.
-2. Training → finish a lesson or two → Quit training → Training again. The finished ones should have a ✓, and Continue training should start at the next one. Reload the page and check again.
-3. Finish all seven: the button goes back to "Start training" from the top.
-4. Settings → Unlink my Discord account: the "You will lose" list mentions training progress. (Only go through with it if you want to log in again.)
-5. Check the title footer and Settings for the Terms of Service and Privacy Policy links.
+1. In a fresh browser profile (or after clearing site data), open the build. The nudge should be under Training.
+2. Training → finish Run and scoop → Quit training. The nudge is gone; reload, and it stays gone.
+3. On a controller: from the title, A still goes to team select. Down once, and you're on Training.
 
 ## Questions for you
 
-1. With only two teams, team select's Opponent row has a single choice. Fine until more teams arrive, or should it collapse to "vs Ichthyocentaurs"?
-2. Should Continue training also be the title screen's hint for new players (for example, "New? Try Training" until the first lesson is done)?
+1. Is the wording right, and is the glow too loud or too quiet next to Play?

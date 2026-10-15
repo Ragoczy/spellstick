@@ -172,6 +172,7 @@ export class App {
           report: this.click(() => this.showReport(() => this.showTitle())),
         },
         this.auth,
+        this.trainingDone.size === 0,
       ),
     );
   }

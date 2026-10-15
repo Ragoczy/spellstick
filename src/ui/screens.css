@@ -110,6 +110,17 @@
 .login-note[role='alert'] {
   color: var(--gold);
 }
+/* New players: the Training button glows, with a line under it, until a lesson is finished (M9). */
+.btn.nudge {
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(255, 166, 48, 0.45);
+}
+.training-nudge {
+  margin: -6px 0 0;
+  color: var(--gold);
+  font-size: 13px;
+  text-align: center;
+}
 .btn.primary.discord {
   background: #5865f2;
   border-color: #5865f2;

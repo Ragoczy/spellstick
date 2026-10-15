@@ -48,8 +48,11 @@ export interface TitleActions {
   logout(): void;
 }
 
-/** Play (and Training) only once logged in with Discord; until then the main button is the login. */
-export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
+/**
+ * Play (and Training) only once logged in with Discord; until then the main button is the login.
+ * `nudgeTraining` (no lesson finished yet) points new players at Training; Play stays the main button.
+ */
+export function titleScreen(a: TitleActions, auth: AuthState, nudgeTraining = false): HTMLElement {
   const canPlay = auth.status === 'in' || auth.status === 'dev';
   const main = canPlay
     ? button('Play', a.play, 'btn primary')
@@ -65,7 +68,7 @@ export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
       'div',
       { class: 'stack' },
       main,
-      ...(canPlay ? [button(TRAINING_TEXT.menuTitle, a.training)] : []),
+      ...(canPlay ? trainingButton(a.training, nudgeTraining) : []),
       button('Controls', a.controls),
       button('Settings', a.settings),
     ),
@@ -82,6 +85,14 @@ export function titleScreen(a: TitleActions, auth: AuthState): HTMLElement {
       ...policyLinks(),
     ),
   );
+}
+
+/** The title screen's Training button; with `nudge`, it glows and has a line for new players under it. */
+function trainingButton(onClick: () => void, nudge: boolean): HTMLElement[] {
+  if (!nudge) return [button(TRAINING_TEXT.menuTitle, onClick)];
+  const b = button(TRAINING_TEXT.menuTitle, onClick, 'btn nudge');
+  b.setAttribute('aria-describedby', 'training-nudge');
+  return [b, el('p', { class: 'training-nudge', id: 'training-nudge' }, TRAINING_TEXT.nudge)];
 }
 
 /** Terms of Service and Privacy Policy, opened in a new tab so a match in progress isn't lost. */

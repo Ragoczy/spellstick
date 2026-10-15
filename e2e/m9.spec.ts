@@ -129,6 +129,16 @@ test('training: the lesson list, a whole lesson, the next one, skip, and quit', 
   const errors: string[] = [];
   await openTitle(page, errors);
 
+  // A new player (nothing finished yet) is pointed at Training; Play stays the main button.
+  const nudge = page.locator('.training-nudge');
+  await expect(nudge).toHaveText('New? Start here: seven short lessons.');
+  await expect(page.getByRole('button', { name: 'Training' })).toHaveAttribute(
+    'aria-describedby',
+    'training-nudge',
+  );
+  await expect(page.getByRole('button', { name: 'Play' })).toBeFocused();
+  await page.screenshot({ path: 'test-results/title-nudge.png' });
+
   await page.getByRole('button', { name: 'Training' }).click();
   await expect(page.getByRole('heading', { name: 'Training' })).toBeVisible();
   await expect(page.locator('#training .lesson-pick')).toHaveCount(7);
@@ -168,6 +178,7 @@ test('training: the lesson list, a whole lesson, the next one, skip, and quit', 
   await page.getByRole('button', { name: 'Quit training' }).click();
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
   await expect(card).toBeHidden();
+  await expect(nudge).toHaveCount(0); // a lesson is finished: no more nudge
   expect((await debug(page)).training).toBeNull();
 
   // The finished lesson is remembered (the skipped one isn't), even after a reload, and

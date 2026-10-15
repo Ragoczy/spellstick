@@ -33,6 +33,33 @@ export function fillControls(text: string, pad: boolean): string {
   return text.replace(/\{(\w+)\}/g, (all, key: string) => words[key] ?? all);
 }
 
+/** Finished lessons, saved in this browser. Unlinking clears it with every other `spellstick.*` key. */
+export const TRAINING_KEY = 'spellstick.training';
+
+/** The lessons finished in this browser (none if storage is blocked or holds junk). */
+export function loadTrainingProgress(storage: Pick<Storage, 'getItem'>): Set<DrillId> {
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(TRAINING_KEY) ?? '[]');
+    return new Set(Array.isArray(raw) ? DRILLS.filter((d) => raw.includes(d)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveTrainingProgress(storage: Pick<Storage, 'setItem'>, done: ReadonlySet<DrillId>): void {
+  try {
+    storage.setItem(TRAINING_KEY, JSON.stringify(DRILLS.filter((d) => done.has(d))));
+  } catch {
+    // Storage blocked: progress just won't be remembered.
+  }
+}
+
+/** Where training picks up: the first unfinished lesson, or the first lesson once all are done. */
+export function nextUnfinished(done: ReadonlySet<DrillId>): number {
+  const i = DRILLS.findIndex((d) => !done.has(d));
+  return i < 0 ? 0 : i;
+}
+
 /** What the lesson card shows. */
 export interface LessonCardState {
   drill: DrillId;

@@ -3,7 +3,13 @@ import { SPELLS } from '../content/spells';
 import { TEAMS } from '../content/teams';
 import { LESSONS, MISS_TEXT } from '../content/training';
 import { DRILLS, makeConfig } from '../sim';
-import { fillControls } from './training';
+import {
+  fillControls,
+  loadTrainingProgress,
+  nextUnfinished,
+  saveTrainingProgress,
+  TRAINING_KEY,
+} from './training';
 
 describe('training text (M9)', () => {
   it('names keyboard-and-mouse or controller buttons, whichever is in use', () => {
@@ -26,6 +32,52 @@ describe('training text (M9)', () => {
 
   it('there is a lesson for every drill', () => {
     expect(Object.keys(LESSONS).sort()).toEqual([...DRILLS].sort());
+  });
+});
+
+describe('training progress (M9)', () => {
+  /** A Storage stand-in backed by a Map. */
+  const memory = () => {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      m,
+    };
+  };
+
+  it('saves finished lessons and reads them back, in lesson order', () => {
+    const s = memory();
+    saveTrainingProgress(s, new Set(['shoot', 'scoop'] as const));
+    expect(s.m.get(TRAINING_KEY)).toBe('["scoop","shoot"]');
+    expect([...loadTrainingProgress(s)]).toEqual(['scoop', 'shoot']);
+  });
+
+  it('nothing saved, junk, unknown lessons, or blocked storage: no progress', () => {
+    expect(loadTrainingProgress(memory()).size).toBe(0);
+    const junk = memory();
+    junk.setItem(TRAINING_KEY, '{nope');
+    expect(loadTrainingProgress(junk).size).toBe(0);
+    const odd = memory();
+    odd.setItem(TRAINING_KEY, '["scoop","flying"]');
+    expect([...loadTrainingProgress(odd)]).toEqual(['scoop']);
+    const blocked = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    expect(loadTrainingProgress(blocked).size).toBe(0);
+    expect(() => saveTrainingProgress(blocked, new Set(['scoop'] as const))).not.toThrow();
+  });
+
+  it('training picks up at the first unfinished lesson, or the top once all are done', () => {
+    expect(nextUnfinished(new Set())).toBe(0);
+    expect(nextUnfinished(new Set(['scoop', 'pass'] as const))).toBe(2);
+    expect(nextUnfinished(new Set(['scoop', 'shoot'] as const))).toBe(1);
+    expect(nextUnfinished(new Set(DRILLS))).toBe(0);
   });
 });
 

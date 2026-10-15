@@ -25,7 +25,7 @@ import {
   unlinkScreen,
   type TeamSelection,
 } from './screens';
-import { LessonCard } from './training';
+import { LessonCard, loadTrainingProgress, saveTrainingProgress } from './training';
 
 const SELECTION_KEY = 'spellstick.selection';
 /** Training: a finished lesson stays on screen this long before the next one starts (ms). */
@@ -60,6 +60,8 @@ export class App {
   /** Training (M9): the lesson card, and the lesson running (an index into DRILLS), if any. */
   private readonly lessonCard: LessonCard;
   private lesson: number | null = null;
+  /** Lessons finished in this browser. */
+  private trainingDone = loadTrainingProgress(localStorageOrNull());
   private lessonTimer = 0;
   private lessonDeviceTimer = 0;
 
@@ -259,10 +261,13 @@ export class App {
   private showTraining(): void {
     const back = this.click(() => this.showTitle());
     this.show(
-      trainingScreen({
-        start: (lesson) => this.click(() => this.startLesson(lesson))(),
-        back,
-      }),
+      trainingScreen(
+        {
+          start: (lesson) => this.click(() => this.startLesson(lesson))(),
+          back,
+        },
+        this.trainingDone,
+      ),
       back,
     );
   }
@@ -289,6 +294,8 @@ export class App {
     this.lessonCard.show(u, this.scene.usingPad);
     if (u.verdict?.kind === 'point') this.sfx.play('spell');
     if (u.points >= u.target) {
+      this.trainingDone.add(u.drill);
+      saveTrainingProgress(localStorageOrNull(), this.trainingDone);
       window.clearTimeout(this.lessonTimer);
       this.lessonTimer = window.setTimeout(() => this.nextLesson(), NEXT_LESSON_DELAY_MS);
     }
@@ -454,6 +461,15 @@ const SOUND_FOR: Partial<Record<SimEvent['type'], SoundName>> = {
   periodEnd: 'whistle',
   cast: 'spell',
 };
+
+/** The browser's localStorage, or a stand-in that remembers nothing if storage is blocked. */
+function localStorageOrNull(): Pick<Storage, 'getItem' | 'setItem'> {
+  try {
+    return localStorage;
+  } catch {
+    return { getItem: () => null, setItem: () => {} };
+  }
+}
 
 function loadSelection(): TeamSelection {
   const fallback: TeamSelection = { home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal' };

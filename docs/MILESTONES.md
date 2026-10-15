@@ -107,6 +107,12 @@ Paul's call: "Turn items 1–3 (goal replays, team identities, training ground) 
   - [x] Esc pauses, with Skip lesson and Quit training.
   - [x] Drill setups and goals are pure sim code with unit tests; a Playwright test plays through the first lesson.
 - **Done when:** a goal in a real match replays and can be skipped; the three teams play noticeably differently (sim stats and a real match) without one being the obvious pick; and a new player can go through every training lesson from the title screen on keyboard and mouse or a controller.
+- From Paul's M9 playtest (2026-10-15): "Wyverns are the Willowmere team, so remove the Willowmere Witches. We'll add some other teams later." Replays stay at about 6 s, styles stay AI-only until more teams arrive, and the blurbs stay. Training progress: "yes", remember it. "Please commit the terms/privacy."
+  - [x] Commit the Terms of Service and Privacy Policy links (Paul's uncommitted work), without the `?auth=true` guest mode that sits alongside it.
+  - [x] Remove the Willowmere Witches team; the spec's canon notes say the Wyverns are Willowmere's team.
+  - [x] Drop the spellcraft style with it (no team plays it), and check the Wyverns vs Ichthyocentaurs matchup is still no one's obvious pick.
+  - [x] Remember finished training lessons in this browser: a ✓ on each in the lesson list, and the main button continues from the first unfinished one. Unlinking clears it, and the unlink screen says so.
+  - [x] Re-gate.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

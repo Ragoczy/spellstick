@@ -19,7 +19,7 @@ test('title, team select, faceoff, spells, period break', async ({ page }) => {
   await page.screenshot({ path: 'test-results/title.png' });
 
   await page.getByRole('button', { name: 'Play' }).click();
-  await page.locator('[data-team="willowmere"][data-side="home"]').click();
+  await page.locator('[data-team="ichthyocentaurs"][data-side="home"]').click();
   await page.screenshot({ path: 'test-results/team-select.png' });
   await page.getByRole('button', { name: 'Start match' }).click();
   await page.getByRole('button', { name: 'Face off!' }).click();

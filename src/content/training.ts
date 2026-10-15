@@ -88,6 +88,10 @@ export const TRAINING_TEXT = {
   menuTitle: 'Training',
   menuIntro: 'Seven short lessons, one skill each. Start at the top, or pick one.',
   startAll: 'Start training',
+  resume: 'Continue training',
+  /** Marks a finished lesson in the list. */
+  doneMark: '✓',
+  doneLabel: 'done',
   point: 'Nice!',
   lessonDone: 'Lesson complete!',
   lessonOf: (n: number, total: number) => `Lesson ${n} of ${total}`,

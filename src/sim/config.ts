@@ -435,7 +435,7 @@ export const DEFAULT_CONFIG = {
       },
       /** Hits hard and carries the ball: more checks, holds on longer, shoots through traffic, casts less. */
       physical: {
-        checkChance: 1.5,
+        checkChance: 1.4,
         spellEagerness: 0.7,
         holdSeconds: 1.5,
         passAdvance: 1.3,
@@ -450,15 +450,6 @@ export const DEFAULT_CONFIG = {
         passAdvance: 0.35,
         forceShot: 1,
         shootRange: 1,
-      },
-      /** Leans on magic: casts more often (Hex Shove, Quickstep, Bent Shot), hits less. */
-      spellcraft: {
-        checkChance: 0.7,
-        spellEagerness: 1.35,
-        holdSeconds: 1,
-        passAdvance: 1,
-        forceShot: 1,
-        shootRange: 0,
       },
     },
   },

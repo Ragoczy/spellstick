@@ -18,11 +18,11 @@ A fast, top-down, arcade sports game in the browser. You control one witch at a 
 - **[CANON]** Checks that are illegal in real lacrosse are legal in spellstick: hits from behind, hits into the boards, cross-checks. Violence is part of the sport, not a foul.
 - **[CANON]** The positions are attack, midfield ("middies"), defense, and goalie.
 - **[CANON]** Magic shows as a golden-orange glow (mana): sticks, shots, and spell effects glow gold-orange.
-- **[CANON]** Team names include the Wyverns, the Ichthyocentaurs, and the Willowmere Witches.
+- **[CANON]** Team names include the Wyverns and the Ichthyocentaurs. The Wyverns are Willowmere's team (Paul, 2026-10-15); there is no separate "Willowmere Witches" team.
 - **[CANON]** The announcer uses witch-flavored exclamations such as "Child's Tantrum!", "Crone's Corns!", and "third-witch in".
 - **[CANON]** Prep teams feed a varsity squad. This is flavor only and has no gameplay effect in v1.
 
-**v1 match-up:** the Wyverns (the player's team by default) vs the Ichthyocentaurs. The team select screen also offers the Willowmere Witches. **[DEFAULT]**
+**v1 match-up:** the Wyverns (the player's team by default) vs the Ichthyocentaurs. More teams come later. **[DEFAULT]**
 
 ## 3. Format
 
@@ -88,7 +88,7 @@ Auto-switching: when your team gains possession, you control the carrier. After 
 
 ## 8. Presentation
 
-- **v1 art:** placeholder shapes only. Players are colored circles with a stick line and a number; the ball is a small white dot with a gold glow while in flight; goals are rectangles; the crease is a circle outline. Team colors: Wyverns crimson, Ichthyocentaurs sea-teal, Willowmere Witches violet. **[DEFAULT]**
+- **v1 art:** placeholder shapes only. Players are colored circles with a stick line and a number; the ball is a small white dot with a gold glow while in flight; goals are rectangles; the crease is a circle outline. Team colors: Wyverns crimson, Ichthyocentaurs sea-teal. **[DEFAULT]**
 - **Gold-orange glow** on spell effects and charged shots: a simple glow via additive blending or a sprite.
 - **HUD:** score, period, game clock, shot clock, the controlled player's mana bar, spell cooldown icons, and a marker over the controlled player.
 - **Announcer callouts (M6):** short text pop-ups on goals, saves, big hits, and turnovers, drawn from a line list in `src/content/announcer.ts` that includes the canon exclamations from §2. Text only; no audio in v1.

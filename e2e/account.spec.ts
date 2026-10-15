@@ -81,6 +81,7 @@ test('Unlink my Discord account: typed confirmation, then the data is gone and t
   await page.evaluate(() => {
     localStorage.setItem('spellstick.muted', '1');
     localStorage.setItem('spellstick.selection', '{"home":"x"}');
+    localStorage.setItem('spellstick.training', '["scoop"]');
   });
 
   await page.getByRole('button', { name: 'Settings' }).click();
@@ -92,6 +93,7 @@ test('Unlink my Discord account: typed confirmation, then the data is gone and t
   const dialog = page.getByRole('alertdialog', { name: 'Unlink your Discord account from Spellstick?' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('It only affects this game.');
+  await expect(dialog).toContainText('training progress');
   const go = dialog.getByRole('button', { name: 'Unlink and delete my game data' });
   await expect(go).toBeDisabled();
   await dialog.getByLabel('Type UNLINK to confirm').fill('unlin');

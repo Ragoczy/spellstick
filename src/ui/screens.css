@@ -560,6 +560,9 @@ body.pad-nav .choice:focus {
 #lesson .lesson-hint {
   margin-top: 6px;
 }
+#training .done-mark {
+  color: var(--gold);
+}
 
 /* Sound toggle, always reachable. */
 #mute {

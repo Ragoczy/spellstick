@@ -169,6 +169,16 @@ test('training: the lesson list, a whole lesson, the next one, skip, and quit', 
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
   await expect(card).toBeHidden();
   expect((await debug(page)).training).toBeNull();
+
+  // The finished lesson is remembered (the skipped one isn't), even after a reload, and
+  // training continues from the first unfinished lesson.
+  await page.reload();
+  await page.getByRole('button', { name: 'Training' }).click();
+  await expect(page.getByRole('button', { name: '1. Run and scoop (done)' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '2. Pass', exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/training-list.png' });
+  await page.getByRole('button', { name: 'Continue training' }).click();
+  await expect(card).toContainText('Lesson 2 of 7');
   expect(errors).toEqual([]);
 });
 

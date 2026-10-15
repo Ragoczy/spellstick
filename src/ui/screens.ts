@@ -2,13 +2,13 @@ import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/change
 import { SPELLS } from '../content/spells';
 import { TEAMS, type TeamId } from '../content/teams';
 import { LESSONS, TRAINING_TEXT } from '../content/training';
-import { DRILLS, type Difficulty } from '../sim';
+import { DRILLS, type Difficulty, type DrillId } from '../sim';
 import type { AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import { PRIVACY_URL, TERMS_URL } from './links';
 import type { TeamTally } from './matchStats';
 import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
-import { fillControls } from './training';
+import { fillControls, nextUnfinished } from './training';
 
 /** Tiny DOM helper: element with attributes and children. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -238,7 +238,11 @@ export function unlinkScreen(a: { confirm(): Promise<boolean>; cancel(): void })
       'ul',
       { class: 'lose-list' },
       el('li', {}, 'your login to Spellstick on this device'),
-      el('li', {}, 'your saved team, opponent, difficulty, and sound setting in this browser'),
+      el(
+        'li',
+        {},
+        'your saved team, opponent, difficulty, sound setting, and training progress in this browser',
+      ),
     ),
     el(
       'p',
@@ -449,10 +453,26 @@ export function pauseScreen(
   );
 }
 
-/** The training ground's lessons (M9): start at the top, or pick one. */
-export function trainingScreen(a: { start(lesson: number): void; back(): void }): HTMLElement {
+/**
+ * The training ground's lessons (M9): continue from the first unfinished one, or pick one.
+ * Lessons finished in this browser (`done`) get a check mark.
+ */
+export function trainingScreen(
+  a: { start(lesson: number): void; back(): void },
+  done: ReadonlySet<DrillId>,
+): HTMLElement {
   // Lesson titles name spells, never buttons, so the device doesn't matter here.
   const title = (i: number) => `${i + 1}. ${fillControls(LESSONS[DRILLS[i]!].title, false)}`;
+  const lesson = (d: DrillId, i: number) => {
+    const b = button(title(i), () => a.start(i), done.has(d) ? 'btn lesson-pick done' : 'btn lesson-pick');
+    if (done.has(d)) {
+      b.append(el('span', { class: 'done-mark', 'aria-hidden': 'true' }, ` ${TRAINING_TEXT.doneMark}`));
+      b.setAttribute('aria-label', `${title(i)} (${TRAINING_TEXT.doneLabel})`);
+    }
+    return b;
+  };
+  // Part-way through: pick up where you left off. None or all done: from the top.
+  const resume = done.size > 0 && done.size < DRILLS.length;
   return screen(
     'training',
     el('h2', {}, TRAINING_TEXT.menuTitle),
@@ -460,8 +480,12 @@ export function trainingScreen(a: { start(lesson: number): void; back(): void })
     el(
       'div',
       { class: 'stack' },
-      button(TRAINING_TEXT.startAll, () => a.start(0), 'btn primary'),
-      ...DRILLS.map((_, i) => button(title(i), () => a.start(i), 'btn lesson-pick')),
+      button(
+        resume ? TRAINING_TEXT.resume : TRAINING_TEXT.startAll,
+        () => a.start(resume ? nextUnfinished(done) : 0),
+        'btn primary',
+      ),
+      ...DRILLS.map(lesson),
       button('Back', a.back),
     ),
   );

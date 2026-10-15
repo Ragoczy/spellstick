@@ -52,7 +52,8 @@
 #settings .panel,
 #report .panel,
 #unlink .panel,
-#training .panel {
+#training .panel,
+#lobby .panel {
   max-height: 100%;
   overflow-y: auto;
 }
@@ -643,4 +644,66 @@ body.pad-nav .choice:focus {
   #announcer.show {
     animation: none;
   }
+}
+
+/* Online lobby (SPEC §11): two seats side by side, the room link, who's watching. */
+#lobby h2,
+#lobby h3,
+#lobby p {
+  text-align: center;
+}
+#lobby .share .row {
+  align-items: center;
+}
+.room-link {
+  font-size: 15px;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 6px;
+  user-select: all;
+  word-break: break-all;
+}
+.seats {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  margin: 16px 0 6px;
+  flex-wrap: wrap;
+}
+.seat {
+  flex: 1 1 200px;
+  max-width: 260px;
+  min-height: 150px;
+  border: 2px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+}
+.seat.mine {
+  box-shadow: 0 0 18px rgba(255, 166, 48, 0.35);
+}
+.seat h3 {
+  margin: 0;
+}
+.seat-name {
+  margin: 0;
+  font-size: 17px;
+}
+.seat-ready {
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--gold);
+}
+.seats .vs {
+  font-weight: 700;
+  opacity: 0.7;
+}
+.lobby-status {
+  min-height: 1.3em;
+  font-size: 17px;
 }

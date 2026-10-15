@@ -16,7 +16,12 @@ The card game already has the `spellstick` names, so this game's are `game-spell
 | `Integrations--Discord--*` secrets | `kv-ha7siia4h4zia` (rg-aiuthor) | The shared Darkspace server settings (server ID, role IDs, admin IDs). With `SpellstickLive`, the app can read only these six secrets. |
 | Logs | `log-aiuthor` via `cae-aiuthor` | Server logs. |
 
-No database: the game is single-player and stores nothing server-side. Sessions are signed
+Online 1v1 (SPEC §11) runs on the same app: WebSockets at `/api/online`, with every room kept in
+the server's memory. So the app must stay **one copy** (`maxReplicas: 1`), and a deploy or restart
+ends any online matches in progress (players see "The server is busy or restarting"). Never set
+`ONLINE_GUESTS` here: it lets people play online without logging in, for local tests only.
+
+No database: the game stores nothing server-side. Sessions are signed
 cookies (30 days).
 
 Live: https://spellstick.games.darkspace.press (once the domain is bound), and

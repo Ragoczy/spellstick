@@ -62,6 +62,7 @@ export async function connect(): Promise<DiscordConnection> {
   }
   return {
     signIn,
+    instanceId: sdk.instanceId,
     setPresence,
     openExternal: (url) => void sdk.commands.openExternalLink({ url }).catch(warnOnce),
   };

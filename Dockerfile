@@ -1,7 +1,7 @@
 # Spellstick: the built browser game plus the small Discord login server, in one container.
 # Built and pushed by GitHub Actions; runs on Azure Container Apps (see infra/README.md).
 
-# ---- Build: compile the game and the server ----
+# ---- Build: the game, and the server bundled with the game code it shares ----
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -12,7 +12,7 @@ ARG BUILD_SHA=dev
 ENV GITHUB_SHA=$BUILD_SHA
 RUN npm run build && npm run build:server
 
-# ---- Run: the server uses only Node's built-in modules, so no npm install here ----
+# ---- Run: the server is one bundled file (ws included), so no npm install here ----
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production PORT=8080

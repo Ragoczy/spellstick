@@ -11,6 +11,8 @@ import {
   type SimEvent,
 } from '../sim';
 import { clipId } from '../content/announcer';
+import { ONLINE_TEXT } from '../content/online';
+import type { RoomView, Seat } from '../net';
 import { LESSONS, TRAINING_TEXT } from '../content/training';
 import { VOICE_CLIPS } from '../content/announcerVoice';
 import { Announcer, calloutPriority } from './announcer';
@@ -27,6 +29,7 @@ import { Sfx, type SoundName } from './audio';
 import {
   IN_DISCORD,
   MENU_PRESENCE,
+  discordInstanceId,
   discordSignIn,
   matchPresence,
   openExternal,
@@ -35,11 +38,15 @@ import {
   trainingPresence,
 } from './discord';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
+import { BYE_MESSAGES, OnlineSession, discordRoom, roomFromAddress, roomLink } from './online';
 import { PadMenus } from './padMenus';
 import { reportMailto } from './report';
 import { AnnouncerVoice } from './voice';
 import {
   controlsScreen,
+  lobbyScreen,
+  messageScreen,
+  onlineMenuScreen,
   pauseScreen,
   reportScreen,
   resultsScreen,
@@ -93,6 +100,16 @@ export class App {
   private lessonDeviceTimer = 0;
   /** When the current match started (ms since 1970), for the elapsed time on a Discord profile. */
   private matchStartedAt = 0;
+  /** Online play (SPEC §11): the connection to a room, and what this screen is showing of it. */
+  private online: OnlineSession | null = null;
+  private onlineShowing: 'connecting' | 'lobby' | 'match' | 'menu' | 'results' | null = null;
+  /** The room's match on screen (its number), and our side in it (null: watching). */
+  private onlineMatch: { number: number; side: Seat | null } | null = null;
+  private linkCopied = false;
+  /** A `?room=` link opens the lobby once, right after login. */
+  private roomLinkHandled = false;
+  private lastRoomPhase: RoomView['phase'] | null = null;
+  private reconnectNotice = false;
 
   constructor(private readonly game: Phaser.Game) {
     this.root = document.createElement('div');
@@ -175,6 +192,7 @@ export class App {
 
   showTitle(): void {
     this.leaveTraining();
+    this.closeOnline();
     this.inMatch = false;
     this.announcer.clear();
     this.voice.stop();
@@ -186,6 +204,7 @@ export class App {
       titleScreen(
         {
           play: this.click(() => this.showTeamSelect()),
+          online: this.click(() => this.openOnline()),
           training: this.click(() => this.showTraining()),
           login: this.click(() => window.location.assign(LOGIN_URL)),
           logout: this.click(() => void this.logout()),
@@ -269,6 +288,12 @@ export class App {
     this.auth = await checkSession(import.meta.env.DEV);
     if (message && this.auth.status === 'out') this.auth = { status: 'out', message };
     if (this.onTitle) this.showTitle();
+    // Opened from a friend's room link: straight to that room's lobby.
+    const canPlay = this.auth.status === 'in' || this.auth.status === 'dev';
+    if (!this.roomLinkHandled && canPlay && roomFromAddress(window.location.search)) {
+      this.roomLinkHandled = true;
+      if (this.onTitle) this.openOnline();
+    }
   }
 
   private async logout(): Promise<void> {
@@ -448,8 +473,10 @@ export class App {
     else if (e.key === 'm' || e.key === 'M') this.toggleMute();
   }
 
-  /** Esc, or Start / Menu on a gamepad. */
+  /** Esc, or Start / Menu on a gamepad. Online there's no pause, only a menu (SPEC §11). */
   private togglePause(): void {
+    if (this.onlineShowing === 'match') return this.showOnlineMenu();
+    if (this.onlineShowing === 'menu') return this.resumeOnline();
     if (this.inMatch && !this.scene.paused) this.pause();
     else if (this.inMatch && this.scene.paused) this.resume();
   }
@@ -481,7 +508,7 @@ export class App {
       if (sound) this.sfx.play(sound);
     }
     // Training has sound (the faceoff whistle matters) but no stats or announcer.
-    if (setup.mode !== 'play') return;
+    if (setup.mode !== 'play' && setup.mode !== 'online') return;
     if (IN_DISCORD) {
       const periods = this.config.match.periods;
       setDiscordPresence(
@@ -489,8 +516,8 @@ export class App {
       );
     }
     tallyEvents(this.tally, events);
-    // The player is always the home side (team 0).
-    const callout = Announcer.classify(events, state, this.config, 0);
+    // The player's side: home in single-player; online, their seat (watchers hear it from home).
+    const callout = Announcer.classify(events, state, this.config, setup.online?.side ?? 0);
     if (callout) {
       const line = this.announcer.call(callout.kind);
       // The angry take when the moment favors the opponent; the regular take if there's no angry one.
@@ -501,6 +528,7 @@ export class App {
   private onMatchOver(state: MatchState, setup: MatchSetup): void {
     this.inMatch = false;
     this.sfx.play('whistle');
+    if (setup.mode === 'online') return this.onOnlineMatchOver(state);
     if (setup.mode === 'play') setDiscordPresence(resultPresence({ ...setup, score: state.score }));
     // Let the final goal/whistle land before the results come up.
     window.setTimeout(() => {
@@ -520,6 +548,219 @@ export class App {
         ),
       );
     }, 1200);
+  }
+
+  // ---- Online (SPEC §11) ----
+
+  /**
+   * Play online: inside Discord, the room everyone in this Activity shares; in a browser, the
+   * room in the address (a friend's link), or a new one.
+   */
+  private openOnline(): void {
+    this.closeOnline();
+    const instance = IN_DISCORD ? discordInstanceId() : null;
+    if (IN_DISCORD && !instance) return this.showOnlineEnded('lost');
+    const room = instance ? discordRoom(instance) : roomFromAddress(window.location.search);
+    this.linkCopied = false;
+    this.online = new OnlineSession(room, {
+      welcome: (_you, code) => {
+        // The address becomes the room's link, so a reload comes back to it.
+        if (!IN_DISCORD) window.history.replaceState(null, '', `/?room=${code}`);
+      },
+      room: (view) => this.onRoom(view),
+      snapshot: (snap, slack) => {
+        if (this.onlineMatch) this.scene.onlineSnapshot(snap, slack);
+      },
+      ended: (reason) => this.showOnlineEnded(reason),
+      reconnecting: (on) => {
+        this.reconnectNotice = on;
+        this.toast(on ? ONLINE_TEXT.reconnecting : '', on ? 0 : 1);
+      },
+    });
+    this.onlineShowing = 'connecting';
+    const leave = this.click(() => this.leaveOnline());
+    this.show(
+      messageScreen(ONLINE_TEXT.title, ONLINE_TEXT.connecting, [
+        { label: ONLINE_TEXT.leave, onClick: leave },
+      ]),
+      leave,
+    );
+  }
+
+  /** The room changed: redraw the lobby, or go into a match that just started with us in a seat. */
+  private onRoom(view: RoomView): void {
+    const me = this.online?.you?.id;
+    if (!me) return;
+    const seat: Seat | null = view.seats[0] === me ? 0 : view.seats[1] === me ? 1 : null;
+    const fresh = view.phase === 'match' && this.onlineMatch?.number !== view.matchNumber;
+    const justStarted = fresh && this.lastRoomPhase === 'countdown';
+    this.lastRoomPhase = view.phase;
+    if (fresh && seat !== null && this.onlineShowing !== 'results') return this.startOnlineMatch(view, seat);
+    // Watchers in the lobby go along when a match starts; joining mid-match, they choose.
+    if (justStarted && this.onlineShowing === 'lobby') return this.startOnlineMatch(view, null);
+    if (this.onlineShowing === 'connecting' || this.onlineShowing === 'lobby') this.showLobby();
+  }
+
+  private showLobby(): void {
+    const o = this.online;
+    if (!o?.view || !o.you) return;
+    if (this.scene.matchSetup.mode !== 'demo') {
+      this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
+    }
+    this.inMatch = false;
+    this.onlineShowing = 'lobby';
+    this.onlineMatch = null;
+    setDiscordPresence(MENU_PRESENCE);
+    const link = IN_DISCORD ? null : roomLink(window.location.origin, o.view.code);
+    const leave = this.click(() => this.leaveOnline());
+    this.show(
+      lobbyScreen(
+        o.view,
+        o.you.id,
+        {
+          seat: (seat) => this.click(() => o.send({ type: 'seat', seat }))(),
+          ready: (ready) => this.click(() => o.send({ type: 'ready', ready }))(),
+          watch: this.click(() => o.view && this.startOnlineMatch(o.view, null)),
+          copyLink: this.click(() => {
+            if (!link) return;
+            void navigator.clipboard?.writeText(link).then(
+              () => {
+                this.linkCopied = true;
+                if (this.onlineShowing === 'lobby') this.showLobby();
+              },
+              () => {},
+            );
+          }),
+          leave,
+        },
+        { link, copied: this.linkCopied },
+      ),
+      leave,
+    );
+  }
+
+  /** Into the room's match: playing our seat, or watching (seat null). */
+  private startOnlineMatch(view: RoomView, side: Seat | null): void {
+    this.onlineMatch = { number: view.matchNumber, side };
+    this.onlineShowing = 'match';
+    this.show(null);
+    this.tally = emptyTally();
+    this.inMatch = true;
+    this.announcer.clear();
+    this.voice.stop();
+    void this.voice.preload();
+    this.scene.startMatch({
+      home: DEFAULT_HOME,
+      away: DEFAULT_AWAY,
+      difficulty: 'normal',
+      mode: 'online',
+      online: { side, link: { sendInputs: (inputs) => this.online?.sendInputs(inputs) } },
+    });
+    this.matchStartedAt = Date.now();
+  }
+
+  private showOnlineMenu(): void {
+    this.onlineShowing = 'menu';
+    this.scene.paused = true; // online this only stops our controls; the match goes on
+    const resume = this.click(() => this.resumeOnline());
+    this.show(
+      onlineMenuScreen({
+        resume,
+        controls: this.click(() =>
+          this.show(
+            controlsScreen(
+              this.click(() => this.showOnlineMenu()),
+              'Back',
+            ),
+            this.click(() => this.showOnlineMenu()),
+          ),
+        ),
+        leave: this.click(() => this.leaveOnline()),
+      }),
+      resume,
+    );
+  }
+
+  private resumeOnline(): void {
+    this.onlineShowing = 'match';
+    this.scene.paused = false;
+    this.show(null);
+  }
+
+  private onOnlineMatchOver(state: MatchState): void {
+    const o = this.online;
+    const view = o?.view;
+    const name = (id: string | null) => view?.members.find((m) => m.id === id)?.name ?? null;
+    const players: [string | null, string | null] = view
+      ? [name(view.seats[0]), name(view.seats[1])]
+      : [null, null];
+    const mySide = this.onlineMatch?.side ?? null;
+    window.setTimeout(() => {
+      if (this.online !== o || this.onlineShowing !== 'match') return;
+      this.scene.paused = false;
+      this.onlineShowing = 'results';
+      this.show(
+        resultsScreen(
+          {
+            home: DEFAULT_HOME,
+            away: DEFAULT_AWAY,
+            score: [state.score[0], state.score[1]],
+            overtime: state.period > this.config.match.periods,
+            tally: this.tally,
+          },
+          { rematch: this.click(() => this.showLobby()), menu: this.click(() => this.leaveOnline()) },
+          { mySide, players },
+        ),
+      );
+    }, 1200);
+  }
+
+  private showOnlineEnded(reason: keyof typeof BYE_MESSAGES): void {
+    this.closeOnline();
+    if (this.scene.matchSetup.mode !== 'demo') {
+      this.scene.startMatch({ home: DEFAULT_HOME, away: DEFAULT_AWAY, difficulty: 'normal', mode: 'demo' });
+    }
+    this.inMatch = false;
+    const back = this.click(() => this.showTitle());
+    const buttons: { label: string; onClick(): void; primary: boolean }[] = [
+      { label: ONLINE_TEXT.backToTitle, onClick: back, primary: true },
+    ];
+    if (reason === 'lost' || reason === 'server') {
+      buttons.push({
+        label: ONLINE_TEXT.tryAgain,
+        onClick: this.click(() => this.openOnline()),
+        primary: false,
+      });
+    }
+    this.show(messageScreen(ONLINE_TEXT.ended, BYE_MESSAGES[reason], buttons), back);
+  }
+
+  /** Leaves the room for good and goes back to the title. */
+  private leaveOnline(): void {
+    this.closeOnline();
+    if (!IN_DISCORD && roomFromAddress(window.location.search)) window.history.replaceState(null, '', '/');
+    this.showTitle();
+  }
+
+  private closeOnline(): void {
+    this.online?.close();
+    this.online = null;
+    this.onlineShowing = null;
+    this.onlineMatch = null;
+    this.lastRoomPhase = null;
+    this.scene.paused = false;
+    if (this.reconnectNotice) this.toast('', 1);
+    this.reconnectNotice = false;
+  }
+
+  /** A short notice at the bottom (shared with "Controller connected"); `ms` 0 keeps it up. */
+  private toast(text: string, ms: number): void {
+    window.clearTimeout(this.padToastTimer);
+    if (text) {
+      this.padToast.textContent = text;
+      this.padToast.classList.add('show');
+    }
+    if (ms > 0) this.padToastTimer = window.setTimeout(() => this.padToast.classList.remove('show'), ms);
   }
 }
 

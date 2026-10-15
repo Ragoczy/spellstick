@@ -1,6 +1,16 @@
 import Phaser from 'phaser';
 import { createDrillControllers, createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId, type TeamInfo } from '../content/teams';
+import {
+  NetClock,
+  Predictor,
+  Smoother,
+  positionsOf,
+  replayShowing,
+  type Positions,
+  type SideInput,
+  type Snapshot as ServerSnapshot,
+} from '../net';
 import { TEXT } from '../content/text';
 import {
   arenaFor,
@@ -17,21 +27,26 @@ import {
   loadoutRng,
   facingDir,
   FixedStepper,
+  followPlay,
   makeConfig,
   matchRoster,
   secondsToTicks,
+  startingControl,
   stepMatch,
   stickHead,
+  switchControl,
   tickSeconds,
   type Difficulty,
   type DrillId,
   type DrillVerdict,
   type InputCommand,
   type MatchState,
+  type Player,
   type RunnerSpell,
   type SimConfig,
   type SimEvent,
   type TeamIndex,
+  type Vec2,
 } from '../sim';
 import { HumanInput } from '../ui/humanInput';
 import { BallView } from './BallView';
@@ -52,19 +67,45 @@ const HUMAN_TEAM: TeamIndex = 0;
 
 /**
  * What to play. `demo` is AI vs AI with no HUD callouts: the title-screen backdrop.
- * `training` runs one drill of the training ground (M9).
+ * `training` runs one drill of the training ground (M9). `online` shows a match the server
+ * runs (SPEC §11), as a player (`online.side`) or a watcher (side null).
  */
 export interface MatchSetup {
   home: TeamId;
   away: TeamId;
   /** The opponents' AI level; your AI teammates always play at Normal. */
   difficulty: Difficulty;
-  mode: 'play' | 'demo' | 'training';
+  mode: 'play' | 'demo' | 'training' | 'online';
   /** The drill to run, in training. */
   drill?: DrillId;
   /** Your team's three spells (M10); the starting three if left out. Opponents get three at random. */
   spells?: readonly RunnerSpell[];
   seed?: number;
+  online?: { side: TeamIndex | null; link: OnlineLink };
+}
+
+/** How an online match sends this person's controls to the server. */
+export interface OnlineLink {
+  sendInputs(inputs: SideInput[]): void;
+}
+
+/** An online match on this screen: predicting ahead of the server, and smoothing its corrections. */
+interface OnlinePlay {
+  side: TeamIndex | null;
+  link: OnlineLink;
+  predictor: Predictor;
+  smoother: Smoother;
+  clock: NetClock;
+  stepper: FixedStepper;
+  /** Controls made this frame, sent together. */
+  outbox: SideInput[];
+  pendingSwitch: boolean;
+  pendingSkip: boolean;
+  /** Where everyone was a tick ago, for drawing between ticks (null right after a correction). */
+  prev: Positions | null;
+  /** The goal whose replay has been shown. */
+  replayedGoal: number | null;
+  started: boolean;
 }
 
 /** A training drill's progress, sent on SCENE_EVENTS.drill: at the start, and after every point or miss. */
@@ -140,7 +181,12 @@ export class MatchScene extends Phaser.Scene {
     resetAt: number | null;
     done: boolean;
   } | null = null;
-  /** While paused the sim doesn't advance (SPEC §5: Esc). */
+  /** The online match on screen, if any. */
+  private online: OnlinePlay | null = null;
+  /**
+   * While paused the sim doesn't advance (SPEC §5: Esc). Online there's no pause (SPEC §11):
+   * the match goes on, and this only stops your controls while the menu is open.
+   */
   paused = false;
   /** Running tally of sim events, for the debug handle (tests, console). */
   readonly eventCounts: Record<string, number> = {};
@@ -199,10 +245,17 @@ export class MatchScene extends Phaser.Scene {
     this.rink.setDepth(-10);
     this.hud.setTeams(this.teams);
     const demo = setup.mode === 'demo';
+    const watching = setup.mode === 'online' && (setup.online?.side ?? null) === null;
     this.hud.setOverlaysEnabled(!demo);
     this.hud.setScoreboardVisible(!training);
-    this.spellBar.setVisible(!demo);
+    this.spellBar.setVisible(!demo && !watching);
 
+    if (setup.mode === 'online') {
+      this.training = null;
+      this.startOnline(setup);
+      return;
+    }
+    this.online = null;
     const seed = setup.seed ?? (demo ? this.demoSeed++ : Math.floor(Math.random() * 1e9));
     if (training) {
       const drill = setup.drill ?? 'scoop';
@@ -291,9 +344,15 @@ export class MatchScene extends Phaser.Scene {
     return this.setup.mode === 'play';
   }
 
-  /** A person is at the controls: a real match or training. */
+  /** A person is at the controls: a real match, training, or an online seat. */
   private get humanPlays(): boolean {
+    if (this.setup.mode === 'online') return this.online !== null && this.online.side !== null;
     return this.setup.mode !== 'demo';
+  }
+
+  /** The team this screen's person plays (home in single-player and for watchers). */
+  private get myTeam(): TeamIndex {
+    return this.online?.side ?? HUMAN_TEAM;
   }
 
   /** The player last touched the gamepad (rather than the keyboard or mouse). */
@@ -337,11 +396,7 @@ export class MatchScene extends Phaser.Scene {
     }
 
     // Control follows the ball when our team gets it (SPEC §5).
-    if (this.humanPlays) {
-      const carrier =
-        this.state.ball.carrier !== null ? this.state.players[this.state.ball.carrier] : undefined;
-      if (carrier && carrier.team === HUMAN_TEAM && carrier.role === 'runner') this.controlledId = carrier.id;
-    }
+    if (this.humanPlays) this.controlledId = followPlay(this.state, HUMAN_TEAM, this.controlledId);
 
     if (this.training) this.judgeDrill();
 
@@ -361,7 +416,7 @@ export class MatchScene extends Phaser.Scene {
 
   private onEvent(e: SimEvent): void {
     this.eventCounts[e.type] = (this.eventCounts[e.type] ?? 0) + 1;
-    const human = (team: TeamIndex | null) => team === HUMAN_TEAM;
+    const human = (team: TeamIndex | null) => team === this.myTeam;
     switch (e.type) {
       case 'faceoffSet':
         this.onFaceoffSet();
@@ -492,7 +547,7 @@ export class MatchScene extends Phaser.Scene {
     this.replay = null;
     this.skipRequested = false;
     this.hud.setReplay(false);
-    this.spellBar.setVisible(this.playing);
+    this.spellBar.setVisible(this.playing || (this.online !== null && this.online.side !== null));
   }
 
   /** One rendered frame of a replay: advance it, or end it when it's done or skipped. */
@@ -544,17 +599,20 @@ export class MatchScene extends Phaser.Scene {
   /** At every faceoff you take the draw yourself (SPEC §4.1). */
   private onFaceoffSet(): void {
     if (!this.humanPlays) return;
-    const f = this.state.faceoff;
-    if (f) {
-      this.controlledId = f.takers[HUMAN_TEAM];
+    if (this.online) {
+      // Online, the shared control rules hand you your taker (src/sim/control.ts).
+      const hint = this.input_.usingPad ? TEXT.faceoffHintPad : TEXT.faceoffHint;
+      this.hud.flash(TEXT.faceoff, 1500, PALETTE.mana, hint);
+      return;
+    }
+    this.controlledId = startingControl(this.state, HUMAN_TEAM);
+    if (this.state.faceoff) {
       this.hud.flash(
         TEXT.faceoff,
         1500,
         PALETTE.mana,
         this.input_.usingPad ? TEXT.faceoffHintPad : TEXT.faceoffHint,
       );
-    } else {
-      this.controlledId = this.state.players.findIndex((p) => p.team === HUMAN_TEAM && p.role === 'runner');
     }
   }
 
@@ -563,19 +621,12 @@ export class MatchScene extends Phaser.Scene {
    * already you, go to the next nearest. On offense control follows the ball anyway.
    */
   private switchPlayer(): void {
-    const s = this.state;
-    if (!this.humanPlays || this.paused || s.phase === 'faceoff') return;
-    const carrier = s.ball.carrier !== null ? s.players[s.ball.carrier] : undefined;
-    if (carrier && carrier.team === HUMAN_TEAM) return;
-    const mates = s.players
-      .filter((p) => p.team === HUMAN_TEAM && p.role === 'runner')
-      .sort(
-        (a, b) =>
-          Math.hypot(a.pos.x - s.ball.pos.x, a.pos.y - s.ball.pos.y) -
-            Math.hypot(b.pos.x - s.ball.pos.x, b.pos.y - s.ball.pos.y) || a.id - b.id,
-      );
-    const next = mates[0]?.id === this.controlledId ? mates[1] : mates[0];
-    if (next) this.controlledId = next.id;
+    if (!this.humanPlays || this.paused) return;
+    if (this.online) {
+      this.online.pendingSwitch = true; // goes with the next tick's controls
+      return;
+    }
+    this.controlledId = switchControl(this.state, HUMAN_TEAM, this.controlledId);
   }
 
   /** Hex Shove: a gold cone that flares out from the caster's stick and fades. */
@@ -614,6 +665,10 @@ export class MatchScene extends Phaser.Scene {
   }
 
   override update(_time: number, deltaMs: number): void {
+    if (this.online) {
+      this.updateOnline(deltaMs / 1000);
+      return;
+    }
     if (this.replay) {
       this.updateReplay(deltaMs / 1000);
       return;
@@ -622,9 +677,20 @@ export class MatchScene extends Phaser.Scene {
     this.input_.pollPad(!this.paused && this.humanPlays);
     const alpha = this.paused ? 1 : this.stepper.advance(deltaMs / 1000);
     if (this.paused) this.input_.consumePresses();
-    const s = this.state;
     const lerp = (a: number, b: number) => a + (b - a) * alpha;
+    const ball = this.state.ball.pos;
+    this.drawLive(
+      (i, p) => {
+        const from = this.prev.players[i] ?? p.pos;
+        return { x: lerp(from.x, p.pos.x), y: lerp(from.y, p.pos.y) };
+      },
+      { x: lerp(this.prev.ball.x, ball.x), y: lerp(this.prev.ball.y, ball.y) },
+    );
+  }
 
+  /** Draws the match as it stands, with each player and the ball at the given spots. */
+  private drawLive(playerAt: (i: number, p: Player) => Vec2, ballAt: Vec2): void {
+    const s = this.state;
     const me = this.controlledId >= 0 ? s.players[this.controlledId] : undefined;
     let passTargetId = -1;
     if (me && s.ball.carrier === me.id) {
@@ -632,10 +698,10 @@ export class MatchScene extends Phaser.Scene {
         choosePassTarget(s, me, stickHead(me, this.config), facingDir(me), this.config)?.id ?? -1;
     }
     s.players.forEach((p, i) => {
-      const from = this.prev.players[i] ?? p.pos;
+      const at = playerAt(i, p);
       this.playerViews[i]?.update({
-        x: lerp(from.x, p.pos.x),
-        y: lerp(from.y, p.pos.y),
+        x: at.x,
+        y: at.y,
         facing: p.facing,
         controlled: i === this.controlledId,
         charge: s.ball.carrier === p.id ? chargeFraction(p.primaryTicks, this.config) : 0,
@@ -649,13 +715,190 @@ export class MatchScene extends Phaser.Scene {
         images: p.images,
       });
     });
-    this.ballView.update(lerp(this.prev.ball.x, s.ball.pos.x), lerp(this.prev.ball.y, s.ball.pos.y), s.ball);
+    this.ballView.update(ballAt.x, ballAt.y, s.ball);
     this.hud.update(s);
     this.spellBar.showPadLabels(this.input_.usingPad);
     this.spellBar.update(me);
     this.drawWards(s.players.filter((p) => p.role === 'goalie' && p.wardTicks > 0).map((p) => p.id));
     this.drawWalls(s.walls);
     this.retro?.render();
+  }
+
+  // ---- Online (SPEC §11) ----
+
+  private startOnline(setup: MatchSetup): void {
+    const side = setup.online?.side ?? null;
+    // Something to draw until the server's first state arrives (it replaces this at once).
+    const placeholder = createMatch(this.config, 1, matchRoster(this.config), { start: 'faceoff' });
+    this.loadState(placeholder, []);
+    this.controlledId = -1;
+    this.online = {
+      side,
+      link: setup.online!.link,
+      predictor: new Predictor(this.config, side),
+      smoother: new Smoother(this.config),
+      clock: new NetClock(this.config),
+      stepper: new FixedStepper(
+        () => this.onlineTick(),
+        tickSeconds(this.config),
+        this.config.maxStepsPerFrame,
+      ),
+      outbox: [],
+      pendingSwitch: false,
+      pendingSkip: false,
+      prev: null,
+      replayedGoal: null,
+      started: false,
+    };
+  }
+
+  /** The server's latest state (from src/ui/online.ts). */
+  onlineSnapshot(snap: ServerSnapshot, slack: number | null): void {
+    const o = this.online;
+    if (!o) return;
+    o.predictor.receive(snap);
+    o.clock.onSnapshot(snap.world.tick, slack, o.side === null);
+    const m = snap.world.match;
+    // Snapshots carry the events since the last one; record them with this frame for replays.
+    m.events = snap.events;
+    this.recorder.record(captureFrame(m, (id) => chargeFraction(m.players[id]!.primaryTicks, this.config)));
+    for (const e of snap.events) this.onEvent(e);
+    if (snap.events.length > 0) this.game.events.emit(SCENE_EVENTS.simEvents, snap.events, m, this.setup);
+    if (!o.started) {
+      o.started = true;
+      if (m.faceoff) this.onFaceoffSet();
+    }
+    if (m.phase === 'final' && !this.overSent) {
+      this.overSent = true;
+      this.game.events.emit(SCENE_EVENTS.matchOver, m, this.setup);
+    }
+  }
+
+  /** One tick of this screen's clock: this person's controls for it, sent and predicted. */
+  private onlineTick(): void {
+    const o = this.online!;
+    const t = (o.clock.tick ?? 0) + 1;
+    o.clock.tick = t;
+    if (o.side !== null) {
+      const w = o.predictor.world;
+      const me = w ? w.match.players[w.control[o.side]] : undefined;
+      let input: SideInput;
+      if (!me || this.paused) {
+        input = { t, move: { x: 0, y: 0 }, aim: me ? { ...me.pos } : { x: 0, y: 0 } };
+      } else {
+        const goals = arenaFor(this.config).goals;
+        const cmd = this.input_.command(me.pos, goals[o.side === 0 ? 1 : 0], me.spells);
+        input = { t, move: cmd.move, aim: cmd.aim };
+        if (cmd.primary) input.primary = true;
+        if (cmd.check) input.check = true;
+        if (cmd.cast) input.cast = cmd.cast;
+      }
+      if (o.pendingSwitch) input.switchPlayer = true;
+      if (o.pendingSkip) input.skipReplay = true;
+      o.pendingSwitch = false;
+      o.pendingSkip = false;
+      this.input_.consumePresses();
+      o.outbox.push(input);
+      o.predictor.addInput(input);
+    }
+    o.prev = o.predictor.world ? positionsOf(o.predictor.world) : null;
+    this.applyCorrection(o.predictor.advanceTo(t));
+  }
+
+  /** A newer server state moved things: draw them where they were and ease them over. */
+  private applyCorrection(fix: { before: Positions; after: Positions } | null): void {
+    const o = this.online!;
+    if (!fix) return;
+    o.smoother.correct(fix.before, fix.after);
+    o.prev = null;
+  }
+
+  private updateOnline(dt: number): void {
+    const o = this.online!;
+    const auth = o.predictor.server;
+    // Goal replays follow the server: it holds the match while one shows.
+    if (auth?.replay && replayShowing(auth) && auth.replay.goalTick !== o.replayedGoal) {
+      o.replayedGoal = auth.replay.goalTick;
+      this.startOnlineReplay(auth.replay.goalTick);
+    }
+    if (this.replay && (!auth || !replayShowing(auth))) this.endReplay();
+
+    if (this.replay) {
+      if (this.input_.pollReplaySkip() || this.skipRequested) {
+        o.pendingSkip = o.side !== null;
+        this.endReplay();
+        if (o.side !== null) this.hud.flash(TEXT.replayWaiting, 1800, PALETTE.text);
+      }
+    } else {
+      this.input_.pollPad(o.side !== null && !this.paused);
+      if (this.paused) this.input_.consumePresses();
+    }
+
+    let alpha = 1;
+    if (o.clock.tick !== null) alpha = o.stepper.advance(dt * o.clock.rate);
+    if (o.outbox.length > 0) {
+      o.link.sendInputs(o.outbox);
+      o.outbox = [];
+    }
+    if (o.clock.tick !== null) this.applyCorrection(o.predictor.advanceTo(o.clock.tick));
+    const w = o.predictor.world;
+    if (!w) return;
+    o.smoother.decay(dt);
+    this.state = w.match;
+    this.controlledId = o.side === null ? -1 : w.control[o.side];
+
+    if (this.replay) {
+      const step = this.replay.advance(dt);
+      if (step) this.drawReplay(step);
+      else this.endReplay();
+      return;
+    }
+    const prev = o.prev;
+    const lerp = (a: number, b: number) => a + (b - a) * alpha;
+    const playerAt = (i: number, p: Player): Vec2 => {
+      const from = prev?.players[i] ?? p.pos;
+      const off = o.smoother.player(i);
+      return { x: lerp(from.x, p.pos.x) + off.x, y: lerp(from.y, p.pos.y) + off.y };
+    };
+    const ball = w.match.ball;
+    // A carried ball goes where its carrier is drawn; a loose one eases on its own.
+    const ballOff = ball.carrier !== null ? o.smoother.player(ball.carrier) : o.smoother.ball;
+    const from = prev?.ball ?? ball.pos;
+    this.drawLive(playerAt, {
+      x: lerp(from.x, ball.pos.x) + ballOff.x,
+      y: lerp(from.y, ball.pos.y) + ballOff.y,
+    });
+  }
+
+  /** The replay of the goal the server is holding the match for (one frame per snapshot). */
+  private startOnlineReplay(goalTick: number): void {
+    const frames = this.recorder.clip(
+      goalTick - secondsToTicks(REPLAY.leadSeconds, this.config),
+      goalTick + secondsToTicks(REPLAY.tailSeconds, this.config),
+    );
+    if (frames.length < 2) return;
+    this.replay = new ReplayPlayback(frames, this.config.tickHz / this.config.online.snapshotEveryTicks);
+    this.skipRequested = false;
+    const seated = this.online !== null && this.online.side !== null;
+    this.hud.setReplay(
+      true,
+      seated ? (this.input_.usingPad ? TEXT.replaySkipPad : TEXT.replaySkip) : undefined,
+    );
+    this.spellBar.setVisible(false);
+  }
+
+  /** Online: this screen's side and clock, and the server's latest tick (tests and the console). */
+  get onlineStatus(): {
+    side: TeamIndex | null;
+    tick: number | null;
+    serverTick: number | null;
+    slack: number | null;
+    rate: number;
+  } | null {
+    const o = this.online;
+    if (!o) return null;
+    const serverTick = o.predictor.server?.tick ?? null;
+    return { side: o.side, tick: o.clock.tick, serverTick, slack: o.clock.lastSlack, rate: o.clock.rate };
   }
 
   /**
@@ -743,6 +986,9 @@ function exposeDebugHandle(scene: MatchScene): void {
     },
     get training() {
       return scene.trainingStatus;
+    },
+    get online() {
+      return scene.onlineStatus;
     },
     fastForwardTo: (phase: MatchState['phase']) => scene.fastForwardTo(phase),
     fastForwardToReplay: () => scene.fastForwardToReplay(),

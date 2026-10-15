@@ -141,5 +141,37 @@ Paul's call: pick 10 of the card game's spells "that fit this version of the gam
   - [x] The headless sim plays random loadouts. A new `--spell-edges` run measures each spell: matches where one team always carries it against a team that never does, sides swapped. Every spell wins 42–58% over 400 games per spell (no obvious pick and no dead one), no spell is above 40% of casts, goals per game stay 6–20, and home wins stay 45–55%. CI checks the spell edges with a quicker 300 games per spell, allowing 40–60% for the extra noise.
 - **Done when:** a player can pick any 3 of the 10 before a match and play with them on keyboard and mouse or a controller; the AI casts all ten; and the sim shows no spell is the obvious pick.
 
+## M11 — Online 1v1 (Paul, 2026-10-15)
+Paul: "1v1", and yes to spectators, the AI taking over on disconnect with rejoin, no online pause, Darkspace members only, and keeping single-player in the browser. Built on its own branch (`online-multiplayer`) while M10 (spell loadouts) is in playtest on `main`. SPEC §11.
+- Rooms and lobby
+  - [x] A room per Discord Activity instance; in a browser, **Play online** makes a room link (`?room=<code>`) to share.
+  - [x] Lobby: the room's members, two seats (Wyverns home, Ichthyocentaurs away), take a seat / leave it / watch, Ready. Both ready: the match starts.
+  - [x] Only signed-in Darkspace members can join (the session cookie, checked on connect).
+- The match
+  - [x] The server runs the match at 60 Hz with the same sim and AI, and sends it to everyone in the room.
+  - [x] Control switching (follow the ball, Space on defense, faceoff takers) is shared code the server and the screens both run.
+  - [x] Each player's screen predicts ahead from the latest server state with their own inputs, and smooths corrections.
+  - [x] Sounds, announcer, and stats come from the server's events. The announcer takes your side.
+  - [x] Goal replays for everyone; the match waits; ends early when both players skip.
+  - [x] No pause: Esc offers Keep playing or Leave match.
+  - [x] Disconnect: the AI takes that side; the same account rejoins and takes it back.
+  - [x] Spectators watch live.
+  - [x] Results for everyone, then Rematch (back to the lobby, seats kept) or Leave.
+- Testing
+  - [x] Unit tests: control switching, the shared world step, prediction (same inputs give the server's state exactly), the server's input handling, room flow.
+  - [x] A headless test: two scripted clients play a whole match through the real server over WebSockets.
+  - [x] Playwright: two browser pages join one room, ready up, and play a few seconds; screenshot.
+  - [x] Re-gate: playtest notes in docs/PLAYTEST.md; Discord itself still to try (needs a deploy).
+- **Done when:** two Darkspace members can play a full 1v1 against each other in a browser room or a Discord Activity, others can watch, and a player who drops can come back.
+
+## M12 — Online feel (planned)
+- [ ] `npm run sim -- --net` plays matches through the prediction code with simulated lag, jitter, and loss, and reports how often and how far screens are corrected.
+- [ ] A network readout (ping, corrections) on a debug key.
+- [ ] Tune input lead, smoothing, and snapshot rate from playtests across regions.
+
+## M13 — Online choices (planned)
+- [ ] Each player picks their team and their three spells (M10's loadouts) in the lobby.
+- [ ] Discord presence for online matches ("Online vs <name>"), and an invite button inside Discord.
+
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

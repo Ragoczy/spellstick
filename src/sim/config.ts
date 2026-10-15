@@ -576,6 +576,36 @@ export const DEFAULT_CONFIG = {
     joggerOffset: 2,
   },
 
+  /** Online 1v1 (M11, SPEC §11). The server runs the match; screens predict ahead of it. */
+  online: {
+    /** The server sends the match to everyone every this many ticks (2 = 30 times a second). */
+    snapshotEveryTicks: 2,
+    /** A player's controls should reach the server this many ticks before it needs them. */
+    inputSlackTicks: 3,
+    /** Further off than this (ticks), a screen jumps its clock instead of drifting it. */
+    clockJumpTicks: 12,
+    /** How much faster or slower a screen runs its clock to drift back to the right lead. */
+    clockDrift: 0.06,
+    /**
+     * With no new controls from a player, the server carries their last ones forward this
+     * long (ticks), then lets go of the sticks: a hidden tab stops sending, and its witch
+     * shouldn't run into the boards for good.
+     */
+    holdInputTicks: 30,
+    /** A screen never predicts further ahead of the latest server state than this (ticks). */
+    maxPredictTicks: 30,
+    /** Corrections to what's drawn fade out over about this long (s); bigger jumps than `snapMeters` just snap. */
+    smoothSeconds: 0.1,
+    snapMeters: 3,
+    /** After a goal, the replay cuts in this long later (s) and the match waits this long for it (s). Matches src/render/replay.ts. */
+    replayDelaySeconds: 1,
+    replayHoldSeconds: 6,
+    /** Both seats ready: the match starts this long later (s). */
+    countdownSeconds: 3,
+    /** The AI level for every AI witch in an online match. */
+    aiLevel: 'normal' as 'easy' | 'normal' | 'hard',
+  },
+
   /** Health checks reported by the headless sim. */
   diagnostics: {
     /** A player within `stuckRadius` meters of one spot for longer than this, during live play, is "stuck". The radius is about 2.7% of the distance a runner covers in that time at top speed. */

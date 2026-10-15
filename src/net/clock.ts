@@ -15,21 +15,29 @@ export class NetClock {
   tick: number | null = null;
   /** Multiplies real time: above 1 to catch up, below 1 to fall back. */
   rate = 1;
+  /** The server's latest report of how early our controls arrive (null: none yet, or watching). */
+  lastSlack: number | null = null;
   private settleUntil = 0;
 
   constructor(private readonly config: SimConfig) {}
 
-  /** A server state for `serverTick` arrived; `slack` is how early our controls get there (null: watching). */
-  onSnapshot(serverTick: number, slack: number | null): void {
+  /**
+   * A server state for `serverTick` arrived. `slack` is how early our latest controls got
+   * there (null: no news since the last snapshot). `watching`: we send no controls.
+   */
+  onSnapshot(serverTick: number, slack: number | null, watching: boolean): void {
     const o = this.config.online;
+    if (slack !== null) this.lastSlack = slack;
     if (this.tick === null) {
-      this.tick = serverTick + (slack === null ? o.snapshotEveryTicks : o.inputSlackTicks + 4);
+      this.tick = serverTick + (watching ? o.snapshotEveryTicks : o.inputSlackTicks + 4);
       this.settleUntil = this.tick + SETTLE_TICKS;
       return;
     }
     if (this.tick < this.settleUntil) return;
-    const error =
-      slack === null ? o.snapshotEveryTicks - (this.tick - serverTick) : o.inputSlackTicks - slack;
+    let error: number;
+    if (watching) error = o.snapshotEveryTicks - (this.tick - serverTick);
+    else if (slack !== null) error = o.inputSlackTicks - slack;
+    else return; // no news: keep going as we are
     if (Math.abs(error) > o.clockJumpTicks) {
       this.tick = Math.max(serverTick, this.tick + error);
       this.rate = 1;

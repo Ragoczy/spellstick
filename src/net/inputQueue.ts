@@ -1,12 +1,15 @@
 import type { SideInput } from './protocol';
 
+/** Ticks to carry a person's last controls forward when none arrive (config.online.holdInputTicks). */
+const DEFAULT_HOLD_TICKS = 30;
+
 /** Controls further ahead than this (ticks) are dropped: no screen runs that far ahead. */
 const MAX_AHEAD_TICKS = 240;
 
 /**
  * The server's queue of one person's controls, by tick. Each tick takes that tick's controls.
  * If they haven't arrived, the last held controls carry on (moving, aiming, holding the button)
- * without repeating one-tick presses. Presses that arrive too late still happen, a tick late,
+ * without repeating one-tick presses, for up to `holdTicks`; after that the witch stands still. Presses that arrive too late still happen, a tick late,
  * so a check or a spell is never lost to lag.
  */
 export class InputQueue {
@@ -15,6 +18,10 @@ export class InputQueue {
   private late: Omit<SideInput, 't' | 'move' | 'aim' | 'primary'> = {};
   /** How many ticks early the latest controls arrived (negative: late). */
   slack: number | null = null;
+  /** Ticks in a row with nothing new. */
+  private missing = 0;
+
+  constructor(private readonly holdTicks = DEFAULT_HOLD_TICKS) {}
 
   /** Controls arriving while the server is at tick `now` (the last tick it stepped). */
   push(input: SideInput, now: number): void {
@@ -35,9 +42,11 @@ export class InputQueue {
     const got = this.byTick.get(tick);
     for (const t of this.byTick.keys()) if (t <= tick) this.byTick.delete(t);
     let input: SideInput | null = got ? { ...got } : null;
+    this.missing = got ? 0 : this.missing + 1;
     if (!input && this.last) {
-      input = { t: tick, move: this.last.move, aim: this.last.aim };
-      if (this.last.primary) input.primary = true;
+      const holding = this.missing <= this.holdTicks;
+      input = { t: tick, move: holding ? this.last.move : { x: 0, y: 0 }, aim: this.last.aim };
+      if (this.last.primary && holding) input.primary = true;
     }
     if (!input) {
       this.late = {};
@@ -58,5 +67,6 @@ export class InputQueue {
     this.last = null;
     this.late = {};
     this.slack = null;
+    this.missing = 0;
   }
 }

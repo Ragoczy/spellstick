@@ -74,6 +74,8 @@ export function warnOnce(err: unknown): void {
 /** What connecting gives the rest of the game (from discordActivity.ts). */
 export interface DiscordConnection {
   signIn: DiscordSignIn;
+  /** This launch of the Activity: everyone who joins it shares the id (their online room, SPEC §11). */
+  instanceId: string;
   setPresence(presence: Presence): void;
   openExternal(url: string): void;
 }
@@ -101,6 +103,11 @@ export function discordSignIn(): Promise<DiscordSignIn> | null {
       (): DiscordSignIn => ({ signedIn: false, reason: 'discord' }),
     ) ?? null
   );
+}
+
+/** Inside Discord, once connected: the Activity instance everyone in it shares. Otherwise null. */
+export function discordInstanceId(): string | null {
+  return connected?.instanceId ?? null;
 }
 
 /** Shows this on the player's Discord profile. Repeats are skipped. Does nothing outside Discord. */

@@ -486,6 +486,12 @@ export const DEFAULT_CONFIG = {
     clockJumpTicks: 12,
     /** How much faster or slower a screen runs its clock to drift back to the right lead. */
     clockDrift: 0.06,
+    /**
+     * With no new controls from a player, the server carries their last ones forward this
+     * long (ticks), then lets go of the sticks: a hidden tab stops sending, and its witch
+     * shouldn't run into the boards for good.
+     */
+    holdInputTicks: 30,
     /** A screen never predicts further ahead of the latest server state than this (ticks). */
     maxPredictTicks: 30,
     /** Corrections to what's drawn fade out over about this long (s); bigger jumps than `snapMeters` just snap. */

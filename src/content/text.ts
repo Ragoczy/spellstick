@@ -22,6 +22,8 @@ export const TEXT = {
   replay: 'REPLAY',
   replaySkip: 'Click or press Space to skip',
   replaySkipPad: 'Press A to skip',
+  /** Online: you skipped the replay; the match waits for the other player (SPEC §11). */
+  replayWaiting: 'Waiting for the other player…',
 } as const;
 
 /** "1st", "2nd", ..., then "OT", "2OT", ... past regulation. */

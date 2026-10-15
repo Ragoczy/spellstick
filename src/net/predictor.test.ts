@@ -47,22 +47,25 @@ describe('Predictor', () => {
     p.receive(snapshotOf(server));
     for (let t = server.tick + 1; t <= server.tick + 25; t++) p.addInput(mine(t));
     for (let i = 0; i < 25; i++) serverStep(server);
-    expect(p.advanceTo(server.tick)).toBe(true);
+    expect(p.advanceTo(server.tick)).not.toBeNull();
     expect(JSON.parse(JSON.stringify(p.world))).toEqual(JSON.parse(JSON.stringify(server)));
   });
 
   it('starts over from each newer server state, ignores older ones, and never runs too far ahead', () => {
     const server = createWorld(config, 7, [true, false]);
     const p = new Predictor(config, 0);
-    expect(p.advanceTo(10)).toBe(false); // nothing from the server yet
+    expect(p.advanceTo(10)).toBeNull(); // nothing from the server yet
     p.receive(snapshotOf(server));
-    expect(p.advanceTo(5)).toBe(true);
-    expect(p.advanceTo(6)).toBe(false);
+    const first = p.advanceTo(5)!;
+    expect(first.before).toEqual(first.after); // nothing drawn before: nothing to smooth
+    expect(p.advanceTo(6)).toBeNull();
     for (let i = 0; i < 10; i++) serverStep(server);
     const newer = snapshotOf(server);
     p.receive(newer);
     p.receive(snapshotOf(createWorld(config, 7, [true, false]))); // stale: ignored
     expect(p.server?.tick).toBe(10);
+    const fix = p.advanceTo(10)!;
+    expect(fix.after.players).toHaveLength(fix.before.players.length);
     p.advanceTo(10_000);
     expect(p.world!.tick).toBe(10 + config.online.maxPredictTicks);
   });

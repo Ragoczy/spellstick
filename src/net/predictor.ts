@@ -11,6 +11,8 @@ import { stepWorld, type OnlineWorld } from './world';
  */
 export class Predictor {
   private auth: { world: OnlineWorld; inputs: InputCommand[] } | null = null;
+  /** The commands the current prediction was carrying forward (before the newest server state). */
+  private prevAuthInputs: InputCommand[] | null = null;
   private fresh = false;
   private readonly mine = new Map<number, SideInput>();
   /** The predicted world, or null before the first server state. */
@@ -41,21 +43,31 @@ export class Predictor {
 
   /**
    * Brings the predicted world up to `tick` (never more than `maxPredictTicks` past the
-   * server's state). Returns true if it started over from a newer server state, which may
-   * have moved things: the caller smooths that over.
+   * server's state). If a newer server state came in, it starts over from that one and says
+   * where things were going to be drawn and where they are now, so the caller can smooth
+   * the difference; otherwise null.
    */
-  advanceTo(tick: number): boolean {
+  advanceTo(tick: number): { before: Positions; after: Positions } | null {
     const auth = this.auth;
-    if (!auth) return false;
-    let restarted = false;
+    if (!auth) return null;
+    const target = Math.min(tick, auth.world.tick + this.config.online.maxPredictTicks);
+    let correction: { before: Positions; after: Positions } | null = null;
     if (this.fresh || !this.world) {
+      // Where the old prediction had things at `target`, to compare with the new one.
+      let before: Positions | null = null;
+      if (this.world && this.prevAuthInputs) {
+        while (this.world.tick < target) this.stepOnce(this.world, this.prevAuthInputs);
+        before = positionsOf(this.world);
+      }
       this.world = structuredClone(auth.world);
       this.fresh = false;
-      restarted = true;
+      while (this.world.tick < target) this.stepOnce(this.world, auth.inputs);
+      const after = positionsOf(this.world);
+      correction = { before: before ?? after, after };
     }
-    const target = Math.min(tick, auth.world.tick + this.config.online.maxPredictTicks);
     while (this.world.tick < target) this.stepOnce(this.world, auth.inputs);
-    return restarted;
+    this.prevAuthInputs = auth.inputs;
+    return correction;
   }
 
   private stepOnce(world: OnlineWorld, others: InputCommand[]): void {

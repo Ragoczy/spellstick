@@ -38,6 +38,18 @@ describe('InputQueue', () => {
     expect(q.take(3)?.check).toBeUndefined();
   });
 
+  it('lets go of the sticks after a while with nothing new (a hidden tab)', () => {
+    const q = new InputQueue(2);
+    q.push(at(1, { primary: true }), 0);
+    q.take(1);
+    expect(q.take(2)).toMatchObject({ move: { x: 1, y: 0 }, primary: true });
+    expect(q.take(3)).toMatchObject({ move: { x: 1, y: 0 }, primary: true });
+    const idle = q.take(4)!;
+    expect(idle.move).toEqual({ x: 0, y: 0 });
+    expect(idle.primary).toBeUndefined();
+    expect(idle.aim).toEqual({ x: 5, y: 5 });
+  });
+
   it('has nothing before the first controls arrive, and forgets on clear', () => {
     const q = new InputQueue();
     expect(q.take(1)).toBeNull();

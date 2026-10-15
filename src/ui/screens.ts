@@ -1,7 +1,9 @@
 import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/changelog';
 import { SPELLS } from '../content/spells';
-import { TEAMS, type TeamId } from '../content/teams';
+import { ONLINE_TEXT } from '../content/online';
+import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId } from '../content/teams';
 import { LESSONS, TRAINING_TEXT } from '../content/training';
+import type { RoomView, Seat } from '../net';
 import { DRILLS, type Difficulty, type DrillId } from '../sim';
 import { DISCORD_SIGN_IN_MESSAGES, type AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
@@ -40,6 +42,8 @@ function screen(id: string, ...content: (Node | string)[]): HTMLElement {
 
 export interface TitleActions {
   play(): void;
+  /** Online 1v1 (SPEC §11). */
+  online(): void;
   training(): void;
   controls(): void;
   settings(): void;
@@ -81,6 +85,7 @@ export function titleScreen(
       'div',
       { class: 'stack' },
       ...(main ? [main] : []),
+      ...(canPlay ? [button(ONLINE_TEXT.playOnline, a.online)] : []),
       ...(canPlay ? trainingButton(a.training, nudgeTraining) : []),
       button('Controls', a.controls),
       button('Settings', a.settings),
@@ -558,12 +563,29 @@ export interface ResultsData {
   tally: [TeamTally, TeamTally];
 }
 
-/** Results (SPEC §9): score and simple stats, then rematch or back to title. */
-export function resultsScreen(r: ResultsData, a: { rematch(): void; menu(): void }): HTMLElement {
+/**
+ * Results (SPEC §9): score and simple stats, then rematch or back to title. Online, `mySide`
+ * is the player's team (null for a watcher) and the buttons go back to the lobby or leave.
+ */
+export function resultsScreen(
+  r: ResultsData,
+  a: { rematch(): void; menu(): void },
+  online?: { mySide: Seat | null; players: [string | null, string | null] },
+): HTMLElement {
   const home = TEAMS[r.home];
   const away = TEAMS[r.away];
-  const won = r.score[0] > r.score[1];
-  const verdict = won ? `${home.name} win!` : `${away.name} win.`;
+  const homeWon = r.score[0] > r.score[1];
+  const mySide = online ? online.mySide : 0;
+  const winner = homeWon ? home.name : away.name;
+  // An exclamation mark when your side won.
+  const verdict = mySide !== null && (homeWon ? 0 : 1) === mySide ? `${winner} win!` : `${winner} win.`;
+  const who = online
+    ? el(
+        'p',
+        { class: 'settings-note' },
+        `${online.players[0] ?? ONLINE_TEXT.ai} (${home.name}) vs ${online.players[1] ?? ONLINE_TEXT.ai} (${away.name})`,
+      )
+    : null;
   const stat = (label: string, h: number, w: number) =>
     el('tr', {}, el('td', {}, label), el('td', {}, String(h)), el('td', {}, String(w)));
   return screen(
@@ -577,6 +599,7 @@ export function resultsScreen(r: ResultsData, a: { rematch(): void; menu(): void
       el('span', { style: `color:${hex(away.color)}` }, away.name),
     ),
     el('p', { class: 'verdict' }, verdict),
+    ...(who ? [who] : []),
     el(
       'table',
       { class: 'stats' },
@@ -592,6 +615,165 @@ export function resultsScreen(r: ResultsData, a: { rematch(): void; menu(): void
       stat('Hits', r.tally[0].hits, r.tally[1].hits),
       stat('Spells cast', r.tally[0].spells, r.tally[1].spells),
     ),
-    el('div', { class: 'actions' }, button('Rematch', a.rematch, 'btn primary'), button('Main menu', a.menu)),
+    el(
+      'div',
+      { class: 'actions' },
+      button(online ? ONLINE_TEXT.backToLobby : 'Rematch', a.rematch, 'btn primary'),
+      button(online ? ONLINE_TEXT.leave : 'Main menu', a.menu),
+    ),
+  );
+}
+
+// ---- Online (SPEC §11) ----
+
+export interface LobbyActions {
+  seat(seat: Seat | null): void;
+  ready(ready: boolean): void;
+  watch(): void;
+  copyLink(): void;
+  leave(): void;
+}
+
+/**
+ * The online lobby (SPEC §11): the two seats (home Wyverns, away Ichthyocentaurs), Ready,
+ * everyone watching, and the room link to share (in a browser) or a note (inside Discord).
+ */
+export function lobbyScreen(
+  room: RoomView,
+  me: string,
+  a: LobbyActions,
+  share: { link: string | null; copied: boolean },
+): HTMLElement {
+  const teams = [TEAMS[DEFAULT_HOME], TEAMS[DEFAULT_AWAY]] as const;
+  const member = (id: string | null) => (id === null ? undefined : room.members.find((m) => m.id === id));
+  const mySeat: Seat | null = room.seats[0] === me ? 0 : room.seats[1] === me ? 1 : null;
+  const inMatch = room.phase === 'match';
+
+  const seatCard = (seat: Seat) => {
+    const team = teams[seat];
+    const who = member(room.seats[seat]);
+    const name = who
+      ? `${who.name}${who.id === me ? ` ${ONLINE_TEXT.you}` : ''}${who.online ? '' : ` (${ONLINE_TEXT.dropped})`}`
+      : ONLINE_TEXT.empty;
+    let action: HTMLButtonElement | null = null;
+    if (!inMatch && !who) {
+      action = button(
+        ONLINE_TEXT.sit,
+        () => a.seat(seat),
+        mySeat === null ? 'btn small primary' : 'btn small',
+      );
+    } else if (!inMatch && who?.id === me) {
+      action = button(ONLINE_TEXT.stand, () => a.seat(null), 'btn small');
+    }
+    return el(
+      'div',
+      { class: `seat${who?.id === me ? ' mine' : ''}`, style: `border-color:${hex(team.color)}` },
+      el('h3', { style: `color:${hex(team.color)}` }, team.name),
+      el('p', { class: 'seat-name' }, name),
+      el('p', { class: 'seat-ready' }, who?.ready ? `✓ ${ONLINE_TEXT.readyMark}` : ''),
+      ...(action ? [action] : []),
+    );
+  };
+
+  const controls: HTMLElement[] = [];
+  if (inMatch) controls.push(button(ONLINE_TEXT.watchMatch, a.watch, 'btn primary'));
+  else if (mySeat !== null) {
+    controls.push(
+      member(me)?.ready
+        ? button(ONLINE_TEXT.notReady, () => a.ready(false))
+        : button(ONLINE_TEXT.ready, () => a.ready(true), 'btn primary'),
+    );
+  }
+  controls.push(button(ONLINE_TEXT.leave, a.leave));
+
+  const watchers = room.members.filter((m) => m.id !== room.seats[0] && m.id !== room.seats[1]);
+  const last = room.lastResult;
+  return screen(
+    'lobby',
+    el('h2', {}, ONLINE_TEXT.title),
+    share.link
+      ? el(
+          'div',
+          { class: 'share' },
+          el('p', { class: 'settings-note' }, ONLINE_TEXT.shareIntro),
+          el(
+            'div',
+            { class: 'row' },
+            el('code', { class: 'room-link' }, share.link),
+            button(share.copied ? ONLINE_TEXT.copied : ONLINE_TEXT.copy, a.copyLink, 'btn small'),
+          ),
+        )
+      : el('p', { class: 'settings-note' }, ONLINE_TEXT.inDiscordIntro),
+    el('div', { class: 'seats' }, seatCard(0), el('span', { class: 'vs' }, 'vs'), seatCard(1)),
+    el('p', { class: 'lobby-status', role: 'status' }, lobbyStatus(room, me)),
+    ...(last
+      ? [
+          el(
+            'p',
+            { class: 'settings-note' },
+            `${ONLINE_TEXT.lastMatch}: ${teams[0].name} ${last.score[0]} – ${last.score[1]} ${teams[1].name}` +
+              (last.overtime ? ' (OT)' : ''),
+          ),
+        ]
+      : []),
+    el('div', { class: 'stack' }, ...controls),
+    el('h3', {}, ONLINE_TEXT.watching),
+    el(
+      'p',
+      { class: 'settings-note watchers' },
+      watchers.length === 0
+        ? ONLINE_TEXT.nobodyWatching
+        : watchers.map((m) => `${m.name}${m.id === me ? ` ${ONLINE_TEXT.you}` : ''}`).join(', '),
+    ),
+  );
+}
+
+/** One line on what the lobby is waiting for. */
+export function lobbyStatus(room: RoomView, me: string): string {
+  if (room.phase === 'match') return ONLINE_TEXT.inProgress;
+  if (room.phase === 'countdown') return ONLINE_TEXT.countdown(room.countdown);
+  const seated = room.seats.map((id) => room.members.find((m) => m.id === id));
+  if (seated.some((m) => !m)) return ONLINE_TEXT.needTwo;
+  const notReady = seated.filter((m) => m && !m.ready);
+  const mine = seated.find((m) => m?.id === me);
+  const other = seated.find((m) => m && m.id !== me);
+  // Seated and the only one not ready: it's on you.
+  if (mine && !mine.ready && other?.ready) return ONLINE_TEXT.yourTurn(other.name);
+  const waiting = notReady.find((m) => m!.id !== me);
+  if (waiting) return ONLINE_TEXT.waitingFor(waiting.name);
+  return notReady.length === 0 ? '' : ONLINE_TEXT.needTwo;
+}
+
+/** A short message with buttons: connecting, or why online play ended. */
+export function messageScreen(
+  title: string,
+  text: string,
+  buttons: { label: string; onClick(): void; primary?: boolean }[],
+): HTMLElement {
+  return screen(
+    'online-message',
+    el('h2', {}, title),
+    el('p', { role: 'status' }, text),
+    el(
+      'div',
+      { class: 'stack' },
+      ...buttons.map((b) => button(b.label, b.onClick, b.primary ? 'btn primary' : 'btn')),
+    ),
+  );
+}
+
+/** Esc in an online match (SPEC §11): no pause, so keep playing or leave. */
+export function onlineMenuScreen(a: { resume(): void; controls(): void; leave(): void }): HTMLElement {
+  return screen(
+    'pause',
+    el('h2', {}, ONLINE_TEXT.menuTitle),
+    el('p', { class: 'settings-note' }, ONLINE_TEXT.menuNote),
+    el(
+      'div',
+      { class: 'stack' },
+      button(ONLINE_TEXT.keepPlaying, a.resume, 'btn primary'),
+      button('Controls', a.controls),
+      button(ONLINE_TEXT.leaveMatch, a.leave),
+    ),
   );
 }

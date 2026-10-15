@@ -80,7 +80,10 @@ export interface Snapshot {
 export type ServerMessage =
   | { type: 'welcome'; you: { id: string; name: string }; room: string }
   | { type: 'room'; room: RoomView }
-  /** `slack`: how many ticks early your controls are arriving (null for watchers). */
+  /**
+   * `slack`: how many ticks early your latest controls arrived, measured since the last
+   * snapshot (null for watchers, and when none arrived since).
+   */
   | { type: 'snap'; snap: Snapshot; slack: number | null }
   | { type: 'pong'; id: number }
   | { type: 'bye'; reason: ByeReason };

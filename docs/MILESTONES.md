@@ -120,23 +120,24 @@ Paul's call: "Turn items 1–3 (goal replays, team identities, training ground) 
 ## M11 — Online 1v1 (Paul, 2026-10-15)
 Paul: "1v1", and yes to spectators, the AI taking over on disconnect with rejoin, no online pause, Darkspace members only, and keeping single-player in the browser. Built on its own branch (`online-multiplayer`) while M10 (spell loadouts) is in playtest on `main`. SPEC §11.
 - Rooms and lobby
-  - [ ] A room per Discord Activity instance; in a browser, **Play online** makes a room link (`?room=<code>`) to share.
-  - [ ] Lobby: the room's members, two seats (Wyverns home, Ichthyocentaurs away), take a seat / leave it / watch, Ready. Both ready: the match starts.
-  - [ ] Only signed-in Darkspace members can join (the session cookie, checked on connect).
+  - [x] A room per Discord Activity instance; in a browser, **Play online** makes a room link (`?room=<code>`) to share.
+  - [x] Lobby: the room's members, two seats (Wyverns home, Ichthyocentaurs away), take a seat / leave it / watch, Ready. Both ready: the match starts.
+  - [x] Only signed-in Darkspace members can join (the session cookie, checked on connect).
 - The match
-  - [ ] The server runs the match at 60 Hz with the same sim and AI, and sends it to everyone in the room.
-  - [ ] Control switching (follow the ball, Space on defense, faceoff takers) is shared code the server and the screens both run.
-  - [ ] Each player's screen predicts ahead from the latest server state with their own inputs, and smooths corrections.
-  - [ ] Sounds, announcer, and stats come from the server's events. The announcer takes your side.
-  - [ ] Goal replays for everyone; the match waits; ends early when both players skip.
-  - [ ] No pause: Esc offers Keep playing or Leave match.
-  - [ ] Disconnect: the AI takes that side; the same account rejoins and takes it back.
-  - [ ] Spectators watch live.
-  - [ ] Results for everyone, then Rematch (back to the lobby, seats kept) or Leave.
+  - [x] The server runs the match at 60 Hz with the same sim and AI, and sends it to everyone in the room.
+  - [x] Control switching (follow the ball, Space on defense, faceoff takers) is shared code the server and the screens both run.
+  - [x] Each player's screen predicts ahead from the latest server state with their own inputs, and smooths corrections.
+  - [x] Sounds, announcer, and stats come from the server's events. The announcer takes your side.
+  - [x] Goal replays for everyone; the match waits; ends early when both players skip.
+  - [x] No pause: Esc offers Keep playing or Leave match.
+  - [x] Disconnect: the AI takes that side; the same account rejoins and takes it back.
+  - [x] Spectators watch live.
+  - [x] Results for everyone, then Rematch (back to the lobby, seats kept) or Leave.
 - Testing
-  - [ ] Unit tests: control switching, the shared world step, prediction (same inputs give the server's state exactly), the server's input handling, room flow.
-  - [ ] A headless test: two scripted clients play a whole match through the real server over WebSockets.
-  - [ ] Playwright: two browser pages join one room, ready up, and play a few seconds; screenshot.
+  - [x] Unit tests: control switching, the shared world step, prediction (same inputs give the server's state exactly), the server's input handling, room flow.
+  - [x] A headless test: two scripted clients play a whole match through the real server over WebSockets.
+  - [x] Playwright: two browser pages join one room, ready up, and play a few seconds; screenshot.
+  - [x] Re-gate: playtest notes in docs/PLAYTEST.md; Discord itself still to try (needs a deploy).
 - **Done when:** two Darkspace members can play a full 1v1 against each other in a browser room or a Discord Activity, others can watch, and a player who drops can come back.
 
 ## M12 — Online feel (planned)

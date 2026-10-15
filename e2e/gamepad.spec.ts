@@ -150,8 +150,10 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
   await page.evaluate(() => ((window as unknown as { __pad: FakePad }).__pad.plugged = true));
   await expect(page.locator('#pad-toast')).toHaveText('Controller connected');
 
-  // Title: D-pad down to Training (A opens it, B comes back), then on to Controls.
+  // Title: D-pad down past Online 1v1 to Training (A opens it, B comes back), then on to Controls.
   expect(await focusedText(page)).toBe('Play');
+  await press(page, 'DOWN');
+  expect(await focusedText(page)).toBe('Online 1v1');
   await press(page, 'DOWN');
   expect(await focusedText(page)).toBe('Training');
   await press(page, 'A');
@@ -159,6 +161,7 @@ test('a whole match on a gamepad: menus, faceoff, move, check, spell, pause, sho
   expect(await focusedText(page)).toBe('Start training');
   await press(page, 'B');
   await expect(page.getByRole('heading', { name: 'SPELLSTICK' })).toBeVisible();
+  await press(page, 'DOWN');
   await press(page, 'DOWN');
   await press(page, 'DOWN');
   expect(await focusedText(page)).toBe('Controls');
@@ -304,6 +307,7 @@ test('training on a gamepad: pad buttons on the card, the stick scoops, Start sk
 
   // Title → Training → Start training, all on the pad.
   expect(await focusedText(page)).toBe('Play');
+  await press(page, 'DOWN');
   await press(page, 'DOWN');
   await press(page, 'A');
   expect(await focusedText(page)).toBe('Start training');

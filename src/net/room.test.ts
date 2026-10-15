@@ -108,7 +108,10 @@ describe('Room', () => {
     s.room.message(1, { type: 'input', inputs });
     s.ticks(4);
     expect(s.room.world!.match.players[me]!.pos.y).toBeLessThan(before.y);
-    expect(s.last(1, 'snap')!.slack).toBe(4);
+    // The report goes out once, in the next snapshot; after that there's no news.
+    const reports = s.sent.get(1)!.flatMap((m) => (m.type === 'snap' && m.slack !== null ? [m.slack] : []));
+    expect(reports).toEqual([4]);
+    expect(s.last(1, 'snap')!.slack).toBeNull();
   });
 
   it("gives a dropped player's side to the AI and lets them back in", () => {

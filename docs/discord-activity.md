@@ -9,7 +9,9 @@ Normal browser play is unchanged. The Discord code runs only when Discord launch
 browser players never download Discord's SDK.
 
 This follows the card game's Activity (`docs/discord-activity.md` in Ragoczy/spellstick-cardgame),
-trimmed to what this game needs: no database, and no online play.
+trimmed to what this game needs: no database. Online 1v1 (SPEC §11, from M11) uses the Activity
+instance as the room: everyone who joins the same Activity is in one lobby (`d-<instanceId>`), over a
+WebSocket to `/api/online` on the Activity's own address, which the `/` mapping sends to our server.
 
 ## Its own Discord app
 
@@ -68,6 +70,9 @@ join the server, or ask for the Players role) and the console has one warning:
   Adding `frame-ancestors` (as the card game does) would be a hardening step; it isn't needed.
 
 ### Not done, or untested
+
+- **Online play inside Discord** (M11) is untested there: the WebSocket uses the Activity's address
+  with no `/.proxy/` prefix, like the sign-in request. If Discord refuses it, try `/.proxy/api/online`.
 
 - **Mobile.** The game's touch support inside Discord's mobile app is untested; the portal steps
   below leave mobile off.

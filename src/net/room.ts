@@ -105,7 +105,7 @@ export class Room {
     }
     this.dirty = true;
     this.sendRoom(conn);
-    if (this.match) this.sendSnapshot([conn]);
+    if (this.match) this.sendSnapshot([conn], false);
   }
 
   /** A connection closed. Mid-match a seated player keeps their seat (the AI plays it) so they can come back. */
@@ -215,7 +215,10 @@ export class Room {
         [level, level],
         [TEAMS[DEFAULT_HOME].style, TEAMS[DEFAULT_AWAY].style],
       ),
-      queues: [new InputQueue(), new InputQueue()],
+      queues: [
+        new InputQueue(this.config.online.holdInputTicks),
+        new InputQueue(this.config.online.holdInputTicks),
+      ],
       events: [...world.match.events],
       inputs: [],
       ticksSinceSnapshot: 0,
@@ -242,23 +245,30 @@ export class Room {
     if (over) this.endMatch(w);
   }
 
-  /** Sends the match to these connections, and starts collecting events afresh. */
-  private sendSnapshot(conns: number[]): void {
+  /**
+   * Sends the match to these connections. The regular snapshot to `everyone` also starts
+   * collecting events and timing reports afresh; one to a newcomer leaves them for the rest.
+   */
+  private sendSnapshot(conns: number[], everyone = true): void {
     const live = this.match;
     if (!live) return;
     const w = live.world;
     // The last tick's events are in `events` already; don't send them twice.
     const lastTick = w.match.events;
     w.match.events = [];
-    const body = JSON.stringify({ world: w, events: live.events, inputs: live.inputs });
+    const body = JSON.stringify({ world: w, events: everyone ? live.events : [], inputs: live.inputs });
     w.match.events = lastTick;
-    live.events = [];
-    live.ticksSinceSnapshot = 0;
+    if (everyone) {
+      live.events = [];
+      live.ticksSinceSnapshot = 0;
+    }
     for (const conn of conns) {
       const seat = this.seatOf(this.byConn.get(conn) ?? '');
       const slack = seat === null ? null : live.queues[seat].slack;
       this.port.send(conn, `{"type":"snap","slack":${slack === null ? 'null' : slack},"snap":${body}}`);
     }
+    // Each report goes out once: a screen must not keep correcting its clock on old news.
+    if (everyone) for (const q of live.queues) q.slack = null;
   }
 
   private endMatch(w: OnlineWorld): void {

@@ -89,5 +89,24 @@ Paul's ask: "add a changelog to startup that shows the most recent updates."
 - [x] It fits the title panel on desktop and phone widths, and the panel scrolls on short windows.
 - Paul signed off (2026-10-10): "three is good." The latest three entries stay; no separate full-history screen.
 
+## M9 — Goal replays, team identities, training ground (Paul, 2026-10-15)
+Paul's call: "Turn items 1–3 (goal replays, team identities, training ground) into M9 and start building."
+- Goal replays
+  - [x] After a goal in a played match, an instant replay of the run-up at half speed, with the spell and hit effects, then the faceoff as usual.
+  - [x] Click, Space, or A skips it; Esc still pauses. No replays in the title-screen demo or in training.
+  - [x] Render-only: the sim never knows a replay ran, so a match plays out exactly as it would without them.
+- Team identities
+  - [x] Each team has a playing style its AI follows: the Wyverns hit hard and carry the ball, the Ichthyocentaurs move it, and the Willowmere Witches cast more spells. Styles are AI tuning only: every witch has the same speed, stick, and spells, and your own player is unchanged.
+  - [x] Team select shows each team's style.
+  - [x] No style is the obvious pick: in the headless sim every style wins 42–58% of its games against the others (sides swapped), and the same-AI balance gate still passes.
+  - [x] The sim runs any style matchup (`--home-style`, `--away-style`) and a matrix of all of them (`--style-matrix`) with per-team stats; CI checks the matrix.
+- Training ground
+  - [x] A Training button on the title screen opens a lesson list: Run and scoop, Pass, Shoot, Bent Shot, Body check, Hex Shove, Faceoff.
+  - [x] Each lesson sets up a small drill with a short goal and a progress count, says what went wrong on a miss, and moves on when done; after the last one you can start a match.
+  - [x] Instructions name keyboard-and-mouse or controller buttons, whichever you're using.
+  - [x] Esc pauses, with Skip lesson and Quit training.
+  - [x] Drill setups and goals are pure sim code with unit tests; a Playwright test plays through the first lesson.
+- **Done when:** a goal in a real match replays and can be skipped; the three teams play noticeably differently (sim stats and a real match) without one being the obvious pick; and a new player can go through every training lesson from the title screen on keyboard and mouse or a controller.
+
 ## Backlog (post-v1, not started without Paul's go-ahead)
 Real art, touch controls, local 2-player, more spells and teams, a season or tournament mode.

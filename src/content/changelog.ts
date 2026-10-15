@@ -11,6 +11,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-10-15',
+    title: 'Training, goal replays, and team styles',
+    items: [
+      'Training on this screen: seven short lessons, from scooping a loose ball to winning faceoffs.',
+      'Every goal replays in slow motion. Click, Space, or A skips it.',
+      'Each team plays its own way: the Wyverns hit hard, the Ichthyocentaurs pass, and the Willowmere Witches cast more spells.',
+    ],
+  },
+  {
     date: '2026-10-10',
     title: 'Settings: report a problem, or unlink your account',
     items: [

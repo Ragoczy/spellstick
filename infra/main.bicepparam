@@ -8,7 +8,7 @@ param image = ''
 
 // This game's own Discord app: Developer Portal > General Information > Application ID (not a
 // secret). Its client secret is the Key Vault secret SpellstickLive. Must be filled in to deploy.
-param discordClientId = ''
+param discordClientId = '1560321450576191569'
 
 // Who may play. Empty = the shared Players role. Set a role ID to limit the game to, say, a beta role.
 param gameAllowedRoleIds = ''

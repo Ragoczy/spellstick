@@ -580,12 +580,32 @@ export const DEFAULT_CONFIG = {
   online: {
     /** The server sends the match to everyone every this many ticks (2 = 30 times a second). */
     snapshotEveryTicks: 2,
-    /** A player's controls should reach the server this many ticks before it needs them. */
-    inputSlackTicks: 3,
+    /**
+     * A player's controls should reach the server this many ticks before it needs them, on a
+     * steady connection. Less lead means less guessing about everyone else (M12's net sim:
+     * 2 ticks draws other witches about half as far off as 3 with a tighter clock).
+     */
+    inputSlackTicks: 2,
+    /**
+     * When controls arrive late, a screen adds a tick of cushion to its lead (at most once
+     * every `leadCushionRaiseSeconds`, up to `leadCushionMaxTicks`), and takes one off after
+     * every `leadCushionRelaxSeconds` with nothing late. Steady connections stay lean; jittery
+     * or lossy ones buy themselves room.
+     */
+    leadCushionMaxTicks: 3,
+    leadCushionRaiseSeconds: 0.5,
+    leadCushionRelaxSeconds: 10,
     /** Further off than this (ticks), a screen jumps its clock instead of drifting it. */
     clockJumpTicks: 12,
     /** How much faster or slower a screen runs its clock to drift back to the right lead. */
     clockDrift: 0.06,
+    /**
+     * A screen speeds its clock up when its controls arrive more than this many ticks later
+     * than its target lead, and slows it down when they arrive more than
+     * `clockEarlyToleranceTicks` earlier. Between the two it leaves the clock alone.
+     */
+    clockLateToleranceTicks: 1,
+    clockEarlyToleranceTicks: 0,
     /**
      * With no new controls from a player, the server carries their last ones forward this
      * long (ticks), then lets go of the sticks: a hidden tab stops sending, and its witch

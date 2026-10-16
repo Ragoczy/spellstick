@@ -513,7 +513,7 @@ export class App {
       rttAvgMs: o.rttAvgMs,
       aheadTicks: status.tick !== null && status.serverTick !== null ? status.tick - status.serverTick : null,
       slack: status.slack,
-      targetSlack: this.config.online.inputSlackTicks,
+      targetSlack: status.target,
       snapsPerSecond: this.netRates.snapsPerSecond,
       kbPerSecond: this.netRates.kbPerSecond,
       corrections: status.corrections,

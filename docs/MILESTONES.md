@@ -170,9 +170,12 @@ Paul: "1v1", and yes to spectators, the AI taking over on disconnect with rejoin
 ## M12 — Online feel (started 2026-10-16)
 Paul: "start by logging a per-match network summary from the server."
 - [x] The server logs one anonymous line per online match (`online: match summary {...}`): each seat's round trips, how early its controls arrive and how many come late, ticks played on carried-forward controls, connected share, drops and rejoins; plus snapshot KB/s per screen, the server's step cost, and stalls. A match cut off by a room closing or a restart is logged as abandoned. How to read them: infra/README.md, "Logs".
-- [ ] `npm run sim -- --net` plays matches through the prediction code with simulated lag, jitter, and loss, and reports how often and how far screens are corrected.
+- [x] `npm run sim -- --net` plays matches through the prediction code with simulated lag, jitter, and loss, and reports how often and how far screens are corrected. It runs the real room and the game's own screen code (`NetScreen`, pulled out of the match scene) over simulated connections to the East US server: east, west, europe, pacific, and busy Wi-Fi. `--links` picks pairings and `--set` tries other `online` settings.
 - [x] A network readout on a debug key (Paul, 2026-10-16: "build the onscreen readout first"). **N** in an online match shows ping, how far the screen runs ahead of the server, how early your controls arrive, updates per second and KB/s, and corrections a second with their size for your witch and everyone else (and snaps). The controls card lists it.
-- [ ] Tune input lead, smoothing, and snapshot rate from playtests across regions.
+- [x] Tune input lead, smoothing, and snapshot rate. Done from the net sim across simulated regions; Paul's playtests across real regions can still move them.
+  - The input lead is now 2 ticks with a tighter clock (was 3, sitting at 5), plus a cushion of up to 3 ticks that a screen adds while its controls arrive late.
+  - Smoothing stays at 0.1 s and snapshots at 30 a second.
+  - The N readout's "aim" shows the live target.
 
 ## M13 — Online spell picks (Paul, 2026-10-16)
 Paul: "drop the team pick and keep only spell picks in the lobby." The two teams differ only in their AI teammates' style, so the seat stays the team (Wyverns home, Ichthyocentaurs away).

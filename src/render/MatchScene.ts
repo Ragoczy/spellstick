@@ -2,14 +2,10 @@ import Phaser from 'phaser';
 import { createDrillControllers, createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId, type TeamInfo } from '../content/teams';
 import {
-  CorrectionLog,
-  NetClock,
-  Predictor,
-  Smoother,
-  positionsOf,
+  NetScreen,
   replayShowing,
   type CorrectionSummary,
-  type Positions,
+  type OnlineWorld,
   type SideInput,
   type Snapshot as ServerSnapshot,
 } from '../net';
@@ -97,21 +93,13 @@ export interface OnlineLink {
 interface OnlinePlay {
   side: TeamIndex | null;
   link: OnlineLink;
-  predictor: Predictor;
-  smoother: Smoother;
-  clock: NetClock;
-  stepper: FixedStepper;
-  /** Controls made this frame, sent together. */
-  outbox: SideInput[];
+  /** The clock, prediction, and smoothing (src/net/screen.ts). */
+  screen: NetScreen;
   pendingSwitch: boolean;
   pendingSkip: boolean;
-  /** Where everyone was a tick ago, for drawing between ticks (null right after a correction). */
-  prev: Positions | null;
   /** The goal whose replay has been shown. */
   replayedGoal: number | null;
   started: boolean;
-  /** Corrections, for the network readout (M12). */
-  corrections: CorrectionLog;
 }
 
 /** A training drill's progress, sent on SCENE_EVENTS.drill: at the start, and after every point or miss. */
@@ -770,21 +758,11 @@ export class MatchScene extends Phaser.Scene {
     this.online = {
       side,
       link: setup.online!.link,
-      predictor: new Predictor(this.config, side),
-      smoother: new Smoother(this.config),
-      clock: new NetClock(this.config),
-      stepper: new FixedStepper(
-        () => this.onlineTick(),
-        tickSeconds(this.config),
-        this.config.maxStepsPerFrame,
-      ),
-      outbox: [],
+      screen: new NetScreen(this.config, side, (t, w) => this.onlineControls(t, w)),
       pendingSwitch: false,
       pendingSkip: false,
-      prev: null,
       replayedGoal: null,
       started: false,
-      corrections: new CorrectionLog(this.config.online.snapMeters),
     };
   }
 
@@ -792,8 +770,7 @@ export class MatchScene extends Phaser.Scene {
   onlineSnapshot(snap: ServerSnapshot, slack: number | null): void {
     const o = this.online;
     if (!o) return;
-    o.predictor.receive(snap);
-    o.clock.onSnapshot(snap.world.tick, slack, o.side === null);
+    o.screen.receive(snap, slack);
     const m = snap.world.match;
     // Snapshots carry the events since the last one; record them with this frame for replays.
     m.events = snap.events;
@@ -810,50 +787,32 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** One tick of this screen's clock: this person's controls for it, sent and predicted. */
-  private onlineTick(): void {
+  /** This person's controls for tick `t` (the screen's clock calls this once a tick). */
+  private onlineControls(t: number, w: Readonly<OnlineWorld> | null): SideInput {
     const o = this.online!;
-    const t = (o.clock.tick ?? 0) + 1;
-    o.clock.tick = t;
-    if (o.side !== null) {
-      const w = o.predictor.world;
-      const me = w ? w.match.players[w.control[o.side]] : undefined;
-      let input: SideInput;
-      if (!me || this.paused) {
-        input = { t, move: { x: 0, y: 0 }, aim: me ? { ...me.pos } : { x: 0, y: 0 } };
-      } else {
-        const goals = arenaFor(this.config).goals;
-        const cmd = this.input_.command(me.pos, goals[o.side === 0 ? 1 : 0], me.spells);
-        input = { t, move: cmd.move, aim: cmd.aim };
-        if (cmd.primary) input.primary = true;
-        if (cmd.check) input.check = true;
-        if (cmd.cast) input.cast = cmd.cast;
-      }
-      if (o.pendingSwitch) input.switchPlayer = true;
-      if (o.pendingSkip) input.skipReplay = true;
-      o.pendingSwitch = false;
-      o.pendingSkip = false;
-      this.input_.consumePresses();
-      o.outbox.push(input);
-      o.predictor.addInput(input);
+    const me = w && o.side !== null ? w.match.players[w.control[o.side]] : undefined;
+    let input: SideInput;
+    if (!me || this.paused) {
+      input = { t, move: { x: 0, y: 0 }, aim: me ? { ...me.pos } : { x: 0, y: 0 } };
+    } else {
+      const goals = arenaFor(this.config).goals;
+      const cmd = this.input_.command(me.pos, goals[o.side === 0 ? 1 : 0], me.spells);
+      input = { t, move: cmd.move, aim: cmd.aim };
+      if (cmd.primary) input.primary = true;
+      if (cmd.check) input.check = true;
+      if (cmd.cast) input.cast = cmd.cast;
     }
-    o.prev = o.predictor.world ? positionsOf(o.predictor.world) : null;
-    this.applyCorrection(o.predictor.advanceTo(t));
-  }
-
-  /** A newer server state moved things: draw them where they were and ease them over. */
-  private applyCorrection(fix: { before: Positions; after: Positions } | null): void {
-    const o = this.online!;
-    if (!fix) return;
-    const w = o.predictor.world;
-    o.corrections.add(this.time.now, fix.before, fix.after, o.side !== null && w ? w.control[o.side] : null);
-    o.smoother.correct(fix.before, fix.after);
-    o.prev = null;
+    if (o.pendingSwitch) input.switchPlayer = true;
+    if (o.pendingSkip) input.skipReplay = true;
+    o.pendingSwitch = false;
+    o.pendingSkip = false;
+    this.input_.consumePresses();
+    return input;
   }
 
   private updateOnline(dt: number): void {
     const o = this.online!;
-    const auth = o.predictor.server;
+    const auth = o.screen.predictor.server;
     // Goal replays follow the server: it holds the match while one shows.
     if (auth?.replay && replayShowing(auth) && auth.replay.goalTick !== o.replayedGoal) {
       o.replayedGoal = auth.replay.goalTick;
@@ -872,16 +831,11 @@ export class MatchScene extends Phaser.Scene {
       if (this.paused) this.input_.consumePresses();
     }
 
-    let alpha = 1;
-    if (o.clock.tick !== null) alpha = o.stepper.advance(dt * o.clock.rate);
-    if (o.outbox.length > 0) {
-      o.link.sendInputs(o.outbox);
-      o.outbox = [];
-    }
-    if (o.clock.tick !== null) this.applyCorrection(o.predictor.advanceTo(o.clock.tick));
-    const w = o.predictor.world;
+    const screen = o.screen;
+    const { send, alpha } = screen.frame(dt, this.time.now);
+    if (send.length > 0) o.link.sendInputs(send);
+    const w = screen.predictor.world;
     if (!w) return;
-    o.smoother.decay(dt);
     this.state = w.match;
     this.controlledId = o.side === null ? -1 : w.control[o.side];
 
@@ -891,16 +845,16 @@ export class MatchScene extends Phaser.Scene {
       else this.endReplay();
       return;
     }
-    const prev = o.prev;
+    const prev = screen.prev;
     const lerp = (a: number, b: number) => a + (b - a) * alpha;
     const playerAt = (i: number, p: Player): Vec2 => {
       const from = prev?.players[i] ?? p.pos;
-      const off = o.smoother.player(i);
+      const off = screen.smoother.player(i);
       return { x: lerp(from.x, p.pos.x) + off.x, y: lerp(from.y, p.pos.y) + off.y };
     };
     const ball = w.match.ball;
     // A carried ball goes where its carrier is drawn; a loose one eases on its own.
-    const ballOff = ball.carrier !== null ? o.smoother.player(ball.carrier) : o.smoother.ball;
+    const ballOff = ball.carrier !== null ? screen.smoother.player(ball.carrier) : screen.smoother.ball;
     const from = prev?.ball ?? ball.pos;
     this.drawLive(playerAt, {
       x: lerp(from.x, ball.pos.x) + ballOff.x,
@@ -941,18 +895,21 @@ export class MatchScene extends Phaser.Scene {
     serverTick: number | null;
     slack: number | null;
     rate: number;
+    /** How many ticks early the clock aims for controls to arrive (lead plus cushion). */
+    target: number;
     corrections: CorrectionSummary;
   } | null {
     const o = this.online;
     if (!o) return null;
-    const serverTick = o.predictor.server?.tick ?? null;
+    const serverTick = o.screen.predictor.server?.tick ?? null;
     return {
       side: o.side,
-      tick: o.clock.tick,
+      tick: o.screen.clock.tick,
       serverTick,
-      slack: o.clock.lastSlack,
-      rate: o.clock.rate,
-      corrections: o.corrections.summary(this.time.now),
+      slack: o.screen.clock.lastSlack,
+      rate: o.screen.clock.rate,
+      target: o.screen.clock.target,
+      corrections: o.screen.corrections.summary(this.time.now),
     };
   }
 

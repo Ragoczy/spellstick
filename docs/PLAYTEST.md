@@ -1,37 +1,34 @@
-# Playtest notes — hidden spells, and M12's network readout
+# Playtest notes — M12: online feel tuned from a network sim
 
 **Build:** https://spellstick.games.darkspace.press (the git SHA is in the bottom-right corner)
 
 ## What changed
 
-- **Spells are hidden until used.** In the online lobby you see only your own three; the other seat says "Spells: hidden until cast". The server no longer sends anyone else's picks to your screen.
-- **The other team's spells in the corner.** In a match (single-player and online), the other team's three show as "?" in the bottom-right corner. Each one turns into its name the first time anyone on that team casts it. A watcher sees both teams' panels, home's at the bottom left.
-- **Network readout (M12): press N in an online match.** A small panel at the top left shows:
-  - **Ping:** the latest round trip and its average.
-  - **Ahead:** how far your screen runs ahead of the server, in ticks and milliseconds.
-  - **Controls:** how early your controls reach the server. It aims for 3 ticks early; "late" means the server had to guess.
-  - **Updates:** how many updates arrive a second, and the data rate.
-  - **Corrections:** how often and how far your screen's guesses get corrected. Your own witch and everyone else are listed separately.
-
-  Press N again to hide it. It's off after a reload.
-- The controls card lists N.
-- Anyone with a page open from before this update is asked to reload before playing online.
+- **A network sim.** `npm run sim -- --net` plays whole online matches between two simulated screens and the real server room. It runs over simulated connections to the East US server: east coast, west coast, Europe, Australia/Asia, and busy Wi-Fi. The screens run the game's own prediction code, and the report says how often and how far each screen gets corrected. The numbers are in docs/DECISIONS.md.
+- **Online play predicts less far ahead.** Your screen used to send its controls about 5 ticks (83 ms) before the server needed them. It now aims for 2 ticks (33 ms) and stays there. That means less guessing about everyone else.
+  - In the sim, on a good connection, other witches are drawn about half as far from where they really are (19 → 9 cm at worst, most of the time).
+  - Your own witch is corrected about 40% less often.
+- **A cushion for bad connections.** When your controls start arriving late (Wi-Fi hiccups, long distance), your screen adds up to 3 ticks of extra lead, then gives it back after 10 calm seconds.
+- **Unchanged:** smoothing (0.1 s) and the update rate (30 a second). Faster updates would double the data for a small gain, and smoothing is a feel question for you (below).
+- **The N readout's "aim"** now shows the live target: 2 normally, up to 5 when the cushion is in use.
 
 ## How to run it
 
-It's deployed. Online needs two Discord accounts in two browsers (or a private window), as before.
+It's deployed. Online needs two Discord accounts in two browsers (or a private window), as before. To run the sim yourself: `npm run sim -- --net --games 4 --seed 1`. It takes about a minute.
 
 ## Things to try
 
-1. **Lobby.** Take seats and change your spells. The other player should see "hidden until cast" on your seat, never the names.
-2. **Reveal.** In a match (single-player is fine), watch the bottom-right "?"s fill in as the other team casts. In single-player, do the ones that appear match what you saw them cast?
-3. **Readout.** In an online match, press N and play for a minute. Note the Ping and Controls lines, and whether Corrections for "you" stay small (a few cm) while you run, check, and cast.
-4. **Bad network.** If you can, try one player on a weaker connection (phone hotspot, far-away Wi-Fi) with N up. Does "Controls" go late, and do Corrections jump? Does the witch feel worse at the same moments?
-5. **Inside Discord.** Press N in the Activity. Discord sometimes adds its own delay.
+1. **Same-region match.** Play a full online match with someone close by. Press **N**: "Controls" should say about 1–2 ticks early (aim 2), and "Corrections" for others should be small.
+2. **Contact.** Body-check and Thunderclap the other player's witch, and race them to loose balls. Those are the moments prediction gets wrong. Do hits land where they look like they land?
+3. **Long distance.** If anyone outside North America can play, have them press N and watch "aim". It should climb to 3–5 when their controls run late. Does their witch still feel like it answers right away?
+4. **Wi-Fi.** One player on a phone hotspot or far from the router. Do stutters clear up within a few seconds?
+5. **Watching.** A third person watching: does play look smooth, with no jumps?
 
 ## Questions for you
 
-1. Does the **"?" panel** read clearly, and is the bottom-right the right place, or does it get lost?
-2. The panel is in **single-player** too, where the opponents' spells were never shown before. Keep it there, or online only?
-3. In the readout, which numbers matched what you **felt**? For example, did the witch feel late when Controls said late, or slippery when Corrections for "you" went up? Tell me what the readout showed in a bad moment, and I'll tune from it (input lead, smoothing, or update rate).
-4. Is **N** a fine key for it, or would you rather it lived in the online Esc menu?
+1. Compared with before, do **other witches look steadier** (fewer small jumps when they turn or get hit)?
+2. Does **your own witch** ever feel like it gets pulled back or nudged sideways? If so, when (checks, spells, loose balls)?
+3. **Smoothing:** when something does get corrected, does it slide too slowly (looks floaty) or pop (looks jumpy)? I can make the slide shorter or longer.
+4. If someone played from far away, what did the readout show at a bad moment (Ping, Controls, aim)? That's what I'd tune next, with real numbers instead of the sim's guesses.
+
+Next up is M14 (badges, tier roles, achievements; docs/BADGES.md), started straight after this gate as you asked. Feedback here still comes first.

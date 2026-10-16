@@ -36,10 +36,46 @@ describe('NetClock', () => {
   it('jumps when far off, then ignores reports that predate the jump', () => {
     const c = settled();
     c.onSnapshot(990, -100, false);
-    expect(c.tick).toBe(1000 + o.inputSlackTicks + 100);
+    expect(c.tick).toBe(1000 + c.target + 100);
     const after = c.tick;
     c.onSnapshot(995, -100, false); // sent before the jump: ignored
     expect(c.tick).toBe(after);
+  });
+
+  it('late controls buy a tick of cushion, at most so often and so much', () => {
+    const c = settled();
+    expect(c.target).toBe(o.inputSlackTicks);
+    c.onSnapshot(990, 0, false);
+    expect(c.cushion).toBe(1);
+    c.onSnapshot(992, -1, false); // too soon after the last one
+    expect(c.cushion).toBe(1);
+    for (let i = 0; i < 40; i++) {
+      c.tick! += 60;
+      c.onSnapshot(c.tick! - 10, 0, false);
+    }
+    expect(c.cushion).toBe(o.leadCushionMaxTicks);
+    expect(c.target).toBe(o.inputSlackTicks + o.leadCushionMaxTicks);
+  });
+
+  it('gives a tick of cushion back after a long enough spell with nothing late', () => {
+    const c = settled();
+    c.onSnapshot(990, 0, false);
+    c.tick! += 60;
+    c.onSnapshot(c.tick! - 10, -1, false);
+    expect(c.cushion).toBe(2);
+    const relax = o.leadCushionRelaxSeconds * config.tickHz;
+    c.tick! += relax - 1;
+    c.onSnapshot(c.tick! - 5, c.target, false);
+    expect(c.cushion).toBe(2); // not quite long enough
+    c.tick! += 1;
+    c.onSnapshot(c.tick! - 5, c.target, false);
+    expect(c.cushion).toBe(1);
+    c.tick! += 1;
+    c.onSnapshot(c.tick! - 5, c.target, false);
+    expect(c.cushion).toBe(1); // one at a time
+    c.tick! += relax;
+    c.onSnapshot(c.tick! - 5, c.target, false);
+    expect(c.cushion).toBe(0);
   });
 
   it('does nothing on a snapshot with no news of our controls', () => {

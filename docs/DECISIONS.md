@@ -234,3 +234,44 @@ Append-only. Format: `YYYY-MM-DD — decision — why — how to change`.
   - **One tier role at a time.** You hold only your highest.
   - **Full Library hint.** It shows a count, never spell names (spells stay hidden until used).
 - 2026-10-16 — **The privacy promise changes with M14.** The unlink screen's "Spellstick keeps no stats, match history, or profile on its server" will become a list of what is kept: name, avatar, achievements, tier, career counts and spells cast. Also added: a button that deletes all of it and removes the tier role. The M12 network log stays anonymous.
+- 2026-10-16 — **The network sim** (M12): `npm run sim -- --net --games 4 --seed 1`. It plays whole online matches in simulated time, with no sockets and no waiting: the real `Room` against two screens, AI at the controls. The screens run the game's own clock, prediction and smoothing. That code moved out of `MatchScene` into `src/net/screen.ts` (`NetScreen`), so the sim and the game can't drift apart.
+  - **Connections.** In-order delivery, like a WebSocket's TCP. Each has a base round trip, exponential jitter, lost packets that arrive a round trip plus 120 ms late (and hold up everything behind them), and Wi-Fi stalls.
+  - **Five links to the East US (eastus2) server:** east 20 ms, west 70 ms, europe 95 ms with 0.2% loss, pacific 210 ms with 0.5% loss, and busy Wi-Fi (35 ms, ±15, 1% loss, a 150 ms stall every 10 s). These are round figures, not measurements. Six pairings play by default; `--links home:away,...` picks others.
+  - **The report, per seat:**
+    - The server's own late and held shares (as in the M12 log line).
+    - Corrections to your own witch a minute, and their size.
+    - The largest correction to anyone else.
+    - Snaps.
+    - How far from the server's truth the screen draws your witch and everyone else, smoothing included.
+    - How far ahead it predicts, and what lead it aims for.
+  - **Bandwidth.** It also estimates snapshot bandwidth after compression (an upper bound: each sampled snapshot is compressed on its own).
+  - **`--set online.<key>=<number>,...`** tries other settings.
+  - It's seeded, so a run repeats exactly.
+- 2026-10-16 — **What the old settings did**, 4 matches per pairing:
+  - **Clock band.** The lead was 3 ticks, but the clock left anything from 2 to 5 alone. So screens sat at the top of the band, 5 ticks early, predicting about 6.6 ticks past the server on a good link. Everyone else was drawn up to 19 cm off (95th percentile).
+  - **Late controls.** Pacific had 12% late and Wi-Fi 9%, mostly from lost packets and stalls. No small lead covers those: a lost packet holds the connection up about 13 ticks.
+  - **Snapshot rate.** 30 a second is about 258 KB/s raw, at most about 52 KB/s compressed.
+    - Every tick: twice the bandwidth for 17 cm instead of 19.
+    - Every 3 ticks: a third less, for 21 cm.
+  - **Smoothing.** Shorter smoothing (0.06 s) draws closer to the truth but turns corrections into visible pops; longer (0.15 s) the reverse. The sim can't measure how a pop looks, so smoothing stays a feel question.
+- 2026-10-16 — **New online settings** (`config.online`):
+  - **Input lead 2 ticks** (was 3).
+  - **Tighter clock.** It slows down as soon as controls arrive earlier than the target (`clockEarlyToleranceTicks` 0, was effectively 2) and speeds up when they're more than a tick late (`clockLateToleranceTicks` 1, unchanged). The two tolerances were hard-coded in `NetClock` and are now config.
+  - **A lead cushion** (`NetClock.cushion`):
+    - Each report of late controls adds a tick, at most one every 0.5 s and at most 3 ticks.
+    - Every 10 s with nothing late takes one back.
+    - Steady connections stay lean; jittery or lossy ones buy room.
+  - **Unchanged:** smoothing stays 0.1 s, snapshots stay at every 2 ticks.
+- 2026-10-16 — **Results** (same runs, old → new):
+  - **Good links** (east, west):
+    - Prediction depth 6.6 → 3.6 ticks.
+    - Everyone else drawn 19 → 9 cm off.
+    - Corrections to your own witch 58 → 33 a minute.
+    - Still 0% late on east.
+  - **Europe:** late goes 2.6% → 6% (lost packets). But your own witch is corrected less (106 → 86 a minute) and drawn closer (6.1 → 4.6 cm at the 95th percentile), and everyone else 37 → 29 cm.
+  - **Pacific and Wi-Fi:** about where they were.
+  - **Cushion cap.**
+    - With no cushion, Wi-Fi and Pacific went to 30% late. Their screens were no worse, but the other player sees their presses a tick or more late.
+    - A cap of 6 made Wi-Fi draw everyone else 39 cm off.
+    - 3 is the middle.
+  - **The N readout's "aim"** now shows the clock's live target (lead plus cushion).

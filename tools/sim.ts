@@ -5,6 +5,7 @@
  *                  [--home-style physical] [--away-style passing] [--loadouts random|default] [--strict]
  *   npm run sim -- --style-matrix --games 200 --seed 1 [--strict]
  *   npm run sim -- --spell-edges --games 200 --seed 1 [--strict]
+ *   npm run sim -- --net --games 4 --seed 1 [--links east:europe,wifi:east] [--set online.inputSlackTicks=4,...]
  *
  * Runs matches with no renderer and prints a stats report. Each match depends only on
  * its seed, so games are split across worker threads and the results are identical to
@@ -17,6 +18,10 @@
  * `--spell-edges` measures each of the ten spells: `--games` matches in which one team always
  * carries it and the other never does, sides alternating; `--strict` fails a spell that wins
  * too often (the obvious pick) or too rarely (a dead pick).
+ * `--net` (M12) plays online matches through the real server room and screens' prediction
+ * code over simulated connections (tools/netSim.ts), `--games` per pairing of connections,
+ * and reports how often and how far screens are corrected. `--set` tries other `online`
+ * settings (comma-separated `online.<key>=<number>`).
  */
 import { availableParallelism } from 'node:os';
 import { parseArgs } from 'node:util';
@@ -46,6 +51,15 @@ import {
   type SpellEdge,
   type StyleTable,
 } from './report';
+import {
+  averagePairing,
+  DEFAULT_PAIRINGS,
+  formatNetReport,
+  LINK_NAMES,
+  runNetMatch,
+  type LinkName,
+  type NetMatchResult,
+} from './netSim';
 import { runMatch } from './runMatch';
 
 /** How a match's two loadouts are chosen. */
@@ -70,6 +84,63 @@ function loadoutsFor(plan: LoadoutPlan, seed: number): [RunnerSpell[], RunnerSpe
   const withIt = drawLoadout(loadoutRng(seed, plan.side), { include: plan.spell });
   const without = drawLoadout(loadoutRng(seed, 1 - plan.side), { exclude: plan.spell });
   return plan.side === 0 ? [withIt, without] : [without, withIt];
+}
+
+/** One online match for `--net`. */
+interface NetTask {
+  seed: number;
+  links: [LinkName, LinkName];
+  online: Record<string, number>;
+}
+
+function runNetTasks(tasks: readonly NetTask[]): NetMatchResult[] {
+  return tasks.map((t) => runNetMatch(makeConfig({ online: t.online }), t.seed, t.links));
+}
+
+/** Runs `--net` matches across `workers` threads, in task order. */
+async function runNetParallel(tasks: readonly NetTask[], workers: number): Promise<NetMatchResult[]> {
+  if (workers === 1) return runNetTasks(tasks);
+  const chunks: { i: number; task: NetTask }[][] = Array.from({ length: workers }, () => []);
+  tasks.forEach((task, i) => chunks[i % workers]!.push({ i, task }));
+  const out: NetMatchResult[] = [];
+  await Promise.all(
+    chunks.map(
+      (chunk) =>
+        new Promise<void>((resolve, reject) => {
+          const w = new Worker(new URL(import.meta.url), { workerData: { net: chunk.map((c) => c.task) } });
+          w.once('message', (results: NetMatchResult[]) => {
+            results.forEach((r, k) => (out[chunk[k]!.i] = r));
+            resolve();
+          });
+          w.once('error', reject);
+        }),
+    ),
+  );
+  return out;
+}
+
+/** `online.<key>=<number>` pairs, comma-separated; null if malformed. */
+function parseOnlineSettings(text: string): Record<string, number> | null {
+  const known = makeConfig().online as Record<string, unknown>;
+  const out: Record<string, number> = {};
+  for (const part of text.split(',').filter(Boolean)) {
+    const m = /^online\.(\w+)=(-?[\d.]+)$/.exec(part.trim());
+    if (!m || typeof known[m[1]!] !== 'number' || !Number.isFinite(Number(m[2]))) return null;
+    out[m[1]!] = Number(m[2]);
+  }
+  return out;
+}
+
+/** `home:away` link names, comma-separated; null if malformed. */
+function parsePairings(text: string): [LinkName, LinkName][] | null {
+  const isLink = (s: string | undefined): s is LinkName => (LINK_NAMES as string[]).includes(s ?? '');
+  const out: [LinkName, LinkName][] = [];
+  for (const part of text.split(',').filter(Boolean)) {
+    const [a, b] = part.trim().split(':');
+    if (!isLink(a) || !isLink(b)) return null;
+    out.push([a, b]);
+  }
+  return out.length > 0 ? out : null;
 }
 
 /** Plays the tasks and returns one report per key. */
@@ -111,7 +182,8 @@ const STYLES = Object.keys(makeConfig().ai.styles) as AiStyle[];
 const isStyle = (s: string): s is AiStyle => (STYLES as string[]).includes(s);
 
 if (!isMainThread) {
-  parentPort!.postMessage(runTasks(workerData as Task[]));
+  const data = workerData as Task[] | { net: NetTask[] };
+  parentPort!.postMessage(Array.isArray(data) ? runTasks(data) : runNetTasks(data.net));
 } else {
   const { values } = parseArgs({
     options: {
@@ -125,6 +197,11 @@ if (!isMainThread) {
       loadouts: { type: 'string', default: 'random' },
       'style-matrix': { type: 'boolean', default: false },
       'spell-edges': { type: 'boolean', default: false },
+      net: { type: 'boolean', default: false },
+      /** With --net: which connections to pair, `home:away,...` (default: a spread). */
+      links: { type: 'string', default: '' },
+      /** With --net: other online settings to try, `online.<key>=<number>,...`. */
+      set: { type: 'string', default: '' },
       /** With --spell-edges: measure just these spells (comma-separated ids), for quick tuning. */
       only: { type: 'string', default: '' },
       strict: { type: 'boolean', default: false },
@@ -161,7 +238,24 @@ if (!isMainThread) {
   const elapsedMs = () => Number(process.hrtime.bigint() - started) / 1e6;
   const pool = (tasks: Task[]) => Math.max(1, Math.min(Number(values.workers), tasks.length));
 
-  if (values['spell-edges']) {
+  if (values.net) {
+    const pairings = values.links ? parsePairings(values.links) : DEFAULT_PAIRINGS;
+    const online = parseOnlineSettings(values.set);
+    if (!pairings || !online) {
+      console.error(
+        `Usage: npm run sim -- --net --games <n> --seed <int> [--links home:away,...] [--set online.<key>=<number>,...]  (links: ${LINK_NAMES.join(', ')})`,
+      );
+      process.exit(1);
+    }
+    const tasks = pairings.flatMap((links) => seeds.map((seed): NetTask => ({ seed, links, online })));
+    const results = await runNetParallel(tasks, pool(tasks as unknown as Task[]));
+    const rows = pairings.map((links, p) => averagePairing(links, results.slice(p * games, (p + 1) * games)));
+    const o = makeConfig({ online }).online;
+    const settings =
+      `input lead ${o.inputSlackTicks} ticks, smoothing ${o.smoothSeconds} s, snapshots every ${o.snapshotEveryTicks} tick${o.snapshotEveryTicks === 1 ? '' : 's'}` +
+      (Object.keys(online).length > 0 ? ` (--set ${values.set})` : " (the game's own)");
+    console.log(formatNetReport(rows, { games, baseSeed, elapsedMs: elapsedMs(), settings }));
+  } else if (values['spell-edges']) {
     const balanced: [AiStyle, AiStyle] = ['balanced', 'balanced'];
     const only = values.only ? values.only.split(',') : null;
     const measured = SPELL_POOL.filter((s) => !only || only.includes(s));

@@ -221,3 +221,16 @@ Append-only. Format: `YYYY-MM-DD — decision — why — how to change`.
   - Corrections: corrections a second over the last 5 s. Your own witch gets an average and a max, everyone else a max. Moves under 0.5 cm aren't counted, and jumps over 3 m (`snapMeters`) are counted as snaps.
 
   Watchers get no Controls line and no "you". The logic is `src/net/readout.ts` (pure, times passed in) and `src/ui/netReadout.ts`; the words are `NET_READOUT_TEXT`. N is keyboard only; there's no pad button for a debug readout. The controls card has a row for it.
+- 2026-10-16 — **Badges and achievements are planned as M14** (Paul: "Propose 5 tiered roles and icons for Spellstick Live to use as Discord badges and an achievements profile page for each user that displays them. Propose 10 achievements."). The design is in docs/BADGES.md. Paul's choices:
+  - **Storage:** a `spellstick_live` database on the card game's shared Postgres server. Azure Table Storage and browser-only storage were the alternatives; browser-only can be faked and can't safely give out Discord roles.
+  - **Roles:** the Spellstick Live bot gives them (Manage Roles). Discord Linked Roles was the alternative; it needs stored refresh tokens and an opt-in step from each player.
+  - **Tiers:** earned by achievements unlocked, not by wins or points.
+- 2026-10-16 — **Choices made for M14.** All can be changed in `src/content/badges.ts` and config once built.
+  - **Online only.** Only matches the server ran count, because single-player could be faked.
+  - **Which matches count.** Two distinct signed-in users at the faceoff, a final whistle, and the player connected at the end.
+  - **Who gets credit.** Per-player achievements count only what the witch you were steering did.
+  - **Tier names, colours and icons are `[PLACEHOLDER]`.** Prep Witch, Varsity Witch, First Line, Captain, Golden Stick. The colours run oak, iron, violet, deep gold and mana gold, avoiding both team colours and the card game's "Spellstick Master". The icons are 8-bit 16×16 pixel art.
+  - **Thresholds.** 1/3/5/7/9 achievements, so the top tier doesn't need Sudden Death.
+  - **One tier role at a time.** You hold only your highest.
+  - **Full Library hint.** It shows a count, never spell names (spells stay hidden until used).
+- 2026-10-16 — **The privacy promise changes with M14.** The unlink screen's "Spellstick keeps no stats, match history, or profile on its server" will become a list of what is kept: name, avatar, achievements, tier, career counts and spells cast. Also added: a button that deletes all of it and removes the tier role. The M12 network log stays anonymous.

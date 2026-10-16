@@ -186,6 +186,18 @@ Paul: "drop the team pick and keep only spell picks in the lobby." The two teams
   - [x] In a match, the other team's three show as "?" in the bottom-right corner, each revealed when that team first casts it. Single-player too; a watcher sees both teams' (home's bottom-left).
   - [x] Re-gate.
 
+## M14 — Badges, tier roles, and achievements (planned; Paul, 2026-10-16)
+Paul: "Propose 5 tiered roles and icons for Spellstick Live to use as Discord badges and an achievements profile page for each user that displays them. Propose 10 achievements." The design is in docs/BADGES.md. Starts after M12 closes. Online 1v1 only.
+- [ ] Tier and achievement names, how-to text, colours, and 16×16 pixel icons in `src/content/`; PNG role icons (64 and 128 px) exported to `assets/discord/` with no new dependency.
+- [ ] A pure evaluator in `src/achievements/` (no Phaser, deterministic) that credits only the witch you were steering, plus tier thresholds 1/3/5/7/9; the online room hands each counting match to the server.
+- [ ] Storage in a `spellstick_live` database on the shared Postgres server (`pg` the only new dependency), with an in-memory store when no database is set.
+- [ ] The Spellstick Live bot gives the tier role (only the highest one) after a match and re-syncs at sign-in; skipped when the bot token or role ids aren't set.
+- [ ] A profile page at `/profile/<id>` and `/profile/me`, linked from the account line, lobby, and results; results list new achievements and a new rank.
+- [ ] The unlink screen says what's stored and can delete the record and the tier role.
+- [ ] Tests for every achievement (earned and not), the counting rules, role sync with a fake `fetch`, and the room hook; the sim reports each achievement's unlock rate; a Playwright screenshot of the profile page.
+- [ ] Paul's one-time Discord and Key Vault setup listed in docs/PLAYTEST.md.
+- **Done when:** two Darkspace members play an online match to the final whistle, both see First Whistle on results and on their profile, and both get the Prep Witch role in Discord.
+
 ## Discord touches (planned, was part of M13)
 - [ ] Discord presence for online matches ("Online vs <name>"), and an invite button inside Discord.
 

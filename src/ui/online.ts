@@ -25,7 +25,12 @@ export interface OnlineHandlers {
   ended(reason: ByeReason | 'lost'): void;
   /** The connection dropped and is being retried (true), or is back (false). */
   reconnecting(on: boolean): void;
+  /** What you earned in the match that just ended (M14), once the server has saved it. */
+  badges?(news: BadgeNews): void;
 }
+
+/** The `badges` message: newly unlocked achievements, your tier, and whether it went up. */
+export type BadgeNews = Omit<Extract<ServerMessage, { type: 'badges' }>, 'type'>;
 
 /** What each reason means to the player. */
 export const BYE_MESSAGES: Record<ByeReason | 'lost', string> = {
@@ -120,6 +125,9 @@ export class OnlineSession {
         break;
       case 'bye':
         this.finish(msg.reason);
+        break;
+      case 'badges':
+        this.handlers.badges?.({ unlocked: msg.unlocked, tier: msg.tier, promoted: msg.promoted });
         break;
       case 'pong': {
         const sent = this.pingsOut.get(msg.id);

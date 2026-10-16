@@ -39,7 +39,15 @@ import {
 } from './discord';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
 import { NetReadout, RateMeter } from './netReadout';
-import { BYE_MESSAGES, OnlineSession, discordRoom, roomFromAddress, roomLink } from './online';
+import {
+  BYE_MESSAGES,
+  OnlineSession,
+  discordRoom,
+  roomFromAddress,
+  roomLink,
+  type BadgeNews,
+} from './online';
+import { deleteProfile, fetchProfile, profileFromPath } from './profileApi';
 import { PadMenus } from './padMenus';
 import { reportMailto } from './report';
 import { AnnouncerVoice } from './voice';
@@ -49,6 +57,7 @@ import {
   messageScreen,
   onlineMenuScreen,
   pauseScreen,
+  profileScreen,
   reportScreen,
   resultsScreen,
   settingsScreen,
@@ -106,7 +115,21 @@ export class App {
   private matchStartedAt = 0;
   /** Online play (SPEC §11): the connection to a room, and what this screen is showing of it. */
   private online: OnlineSession | null = null;
-  private onlineShowing: 'connecting' | 'lobby' | 'spells' | 'match' | 'menu' | 'results' | null = null;
+  private onlineShowing: 'connecting' | 'lobby' | 'spells' | 'match' | 'menu' | 'results' | 'profile' | null =
+    null;
+  /** The online match just finished, for the results screen (redrawn when badge news arrives). */
+  private onlineResult: {
+    score: [number, number];
+    overtime: boolean;
+    mySide: Seat | null;
+    players: [string | null, string | null];
+  } | null = null;
+  /** What you earned in that match (M14), once the server says. */
+  private badgeNews: BadgeNews | null = null;
+  /** Counts profile requests, so a slow answer doesn't replace a newer screen. */
+  private profileRequest = 0;
+  /** A `/profile/...` link opens that profile once, right after login. */
+  private profileLinkHandled = false;
   /** The room's match on screen (its number), and our side in it (null: watching). */
   private onlineMatch: { number: number; side: Seat | null } | null = null;
   private linkCopied = false;
@@ -188,7 +211,10 @@ export class App {
     if (node) {
       this.root.append(node);
       // The main action first (Play, Start match, Resume), so A or Enter does the obvious thing.
-      (node.querySelector<HTMLButtonElement>('.btn.primary') ?? node.querySelector('button'))?.focus();
+      // Without scrolling: a long screen (a profile) opens at its top.
+      (node.querySelector<HTMLButtonElement>('.btn.primary') ?? node.querySelector('button'))?.focus({
+        preventScroll: true,
+      });
     }
   }
 
@@ -218,6 +244,7 @@ export class App {
           training: this.click(() => this.showTraining()),
           login: this.click(() => window.location.assign(LOGIN_URL)),
           logout: this.click(() => void this.logout()),
+          profile: this.click(() => this.showProfile('me', () => this.showTitle())),
           controls: this.click(() =>
             this.show(
               controlsScreen(
@@ -273,6 +300,7 @@ export class App {
     this.show(
       unlinkScreen({
         confirm: async () => {
+          // The server deletes your online record (M14) as part of unlinking.
           if (!(await unlinkAccount())) return false;
           // A fresh load: nothing of the old session or settings stays in memory.
           window.location.assign('/?login=unlinked');
@@ -304,6 +332,47 @@ export class App {
       this.roomLinkHandled = true;
       if (this.onTitle) this.openOnline();
     }
+    // A profile link (M14): that profile, and back to a plain address afterwards.
+    const profile = profileFromPath(window.location.pathname);
+    if (!this.profileLinkHandled && this.auth.status === 'in' && profile && this.onTitle) {
+      this.profileLinkHandled = true;
+      this.showProfile(profile, () => {
+        window.history.replaceState(null, '', '/');
+        this.showTitle();
+      });
+    }
+  }
+
+  /**
+   * A profile (M14): `me`, or someone's Discord id. Yours has "Delete my record". `back` is
+   * where Back goes.
+   */
+  private showProfile(id: string, back: () => void): void {
+    const request = ++this.profileRequest;
+    const user = this.auth.status === 'in' ? this.auth.user : null;
+    const mine = id === 'me' || id === user?.id;
+    const goBack = this.click(back);
+    this.show(profileScreen({ kind: 'loading' }, { back: goBack }), goBack);
+    void fetchProfile(id).then((result) => {
+      if (request !== this.profileRequest || this.current?.id !== 'profile') return;
+      const content =
+        result.kind === 'none'
+          ? {
+              kind: 'none' as const,
+              name: mine ? (user?.username ?? null) : null,
+              avatarUrl: mine ? (user?.avatarUrl ?? null) : null,
+            }
+          : result;
+      const deleteRecord = mine
+        ? async () => {
+            const ok = await deleteProfile();
+            if (ok)
+              window.setTimeout(() => this.current?.id === 'profile' && this.showProfile(id, back), 1200);
+            return ok;
+          }
+        : undefined;
+      this.show(profileScreen(content, { back: goBack, deleteRecord }), goBack);
+    });
   }
 
   private async logout(): Promise<void> {
@@ -627,6 +696,10 @@ export class App {
         this.reconnectNotice = on;
         this.toast(on ? ONLINE_TEXT.reconnecting : '', on ? 0 : 1);
       },
+      badges: (news) => {
+        this.badgeNews = news;
+        if (this.onlineShowing === 'results') this.showOnlineResults();
+      },
     });
     this.onlineShowing = 'connecting';
     const leave = this.click(() => this.leaveOnline());
@@ -684,6 +757,11 @@ export class App {
             );
           }),
           leave,
+          profile: (id) =>
+            this.click(() => {
+              this.onlineShowing = 'profile';
+              this.showProfile(id, () => this.showLobby());
+            })(),
         },
         { link, copied: this.linkCopied },
       ),
@@ -723,6 +801,7 @@ export class App {
   private startOnlineMatch(view: RoomView, side: Seat | null): void {
     this.onlineMatch = { number: view.matchNumber, side };
     this.onlineShowing = 'match';
+    this.badgeNews = null;
     this.show(null);
     this.tally = emptyTally();
     this.inMatch = true;
@@ -775,24 +854,31 @@ export class App {
       ? [name(view.seats[0]), name(view.seats[1])]
       : [null, null];
     const mySide = this.onlineMatch?.side ?? null;
+    this.onlineResult = {
+      score: [state.score[0], state.score[1]],
+      overtime: state.period > this.config.match.periods,
+      mySide,
+      players,
+    };
     window.setTimeout(() => {
       if (this.online !== o || this.onlineShowing !== 'match') return;
       this.scene.paused = false;
       this.onlineShowing = 'results';
-      this.show(
-        resultsScreen(
-          {
-            home: DEFAULT_HOME,
-            away: DEFAULT_AWAY,
-            score: [state.score[0], state.score[1]],
-            overtime: state.period > this.config.match.periods,
-            tally: this.tally,
-          },
-          { rematch: this.click(() => this.showLobby()), menu: this.click(() => this.leaveOnline()) },
-          { mySide, players },
-        ),
-      );
+      this.showOnlineResults();
     }, 1200);
+  }
+
+  /** The online results screen, with what you earned once the server says (M14). */
+  private showOnlineResults(): void {
+    const r = this.onlineResult;
+    if (!r) return;
+    this.show(
+      resultsScreen(
+        { home: DEFAULT_HOME, away: DEFAULT_AWAY, score: r.score, overtime: r.overtime, tally: this.tally },
+        { rematch: this.click(() => this.showLobby()), menu: this.click(() => this.leaveOnline()) },
+        { mySide: r.mySide, players: r.players, badges: this.badgeNews },
+      ),
+    );
   }
 
   private showOnlineEnded(reason: keyof typeof BYE_MESSAGES): void {

@@ -1,3 +1,4 @@
+import type { AchievementId } from '../content/badges';
 import {
   SPELL_POOL,
   isLoadout,
@@ -101,6 +102,12 @@ export type ServerMessage =
    */
   | { type: 'snap'; snap: Snapshot; slack: number | null }
   | { type: 'pong'; id: number }
+  /**
+   * Your achievements from the match that just ended (M14), once the server has saved them:
+   * what's newly unlocked, your tier (0–5), and whether that's a promotion. Only sent when a
+   * match counted for you. Older pages ignore it.
+   */
+  | { type: 'badges'; unlocked: AchievementId[]; tier: number; promoted: boolean }
   | { type: 'bye'; reason: ByeReason };
 
 export type ByeReason = 'replaced' | 'version' | 'bad-room' | 'unauthenticated' | 'too-fast' | 'server';

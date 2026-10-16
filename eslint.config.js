@@ -66,6 +66,31 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/achievements/**/*.ts'],
+    rules: {
+      ...noRandom,
+      'no-restricted-globals': ['error', ...browserOnlyGlobals],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'phaser',
+              message: 'src/achievements runs on the server too and must not import Phaser.',
+            },
+          ],
+          patterns: [
+            { group: ['phaser/*'], message: 'src/achievements must not import Phaser.' },
+            {
+              group: ['**/render/**', '**/ui/**', '**/net/**'],
+              message: 'src/achievements must not depend on render, ui, or net.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/ai/**/*.ts'],
     rules: {
       ...noRandom,

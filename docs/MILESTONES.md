@@ -189,16 +189,25 @@ Paul: "drop the team pick and keep only spell picks in the lobby." The two teams
   - [x] In a match, the other team's three show as "?" in the bottom-right corner, each revealed when that team first casts it. Single-player too; a watcher sees both teams' (home's bottom-left).
   - [x] Re-gate.
 
-## M14 — Badges, tier roles, and achievements (planned; Paul, 2026-10-16)
-Paul: "Propose 5 tiered roles and icons for Spellstick Live to use as Discord badges and an achievements profile page for each user that displays them. Propose 10 achievements." The design is in docs/BADGES.md. Starts after M12 closes. Online 1v1 only.
-- [ ] Tier and achievement names, how-to text, colours, and 16×16 pixel icons in `src/content/`; PNG role icons (64 and 128 px) exported to `assets/discord/` with no new dependency.
-- [ ] A pure evaluator in `src/achievements/` (no Phaser, deterministic) that credits only the witch you were steering, plus tier thresholds 1/3/5/7/9; the online room hands each counting match to the server.
-- [ ] Storage in a `spellstick_live` database on the shared Postgres server (`pg` the only new dependency), with an in-memory store when no database is set.
-- [ ] The Spellstick Live bot gives the tier role (only the highest one) after a match and re-syncs at sign-in; skipped when the bot token or role ids aren't set.
-- [ ] A profile page at `/profile/<id>` and `/profile/me`, linked from the account line, lobby, and results; results list new achievements and a new rank.
-- [ ] The unlink screen says what's stored and can delete the record and the tier role.
-- [ ] Tests for every achievement (earned and not), the counting rules, role sync with a fake `fetch`, and the room hook; the sim reports each achievement's unlock rate; a Playwright screenshot of the profile page.
-- [ ] Paul's one-time Discord and Key Vault setup listed in docs/PLAYTEST.md.
+## M14 — Badges, tier roles, and achievements (Paul, 2026-10-16)
+Paul: "Propose 5 tiered roles and icons for Spellstick Live to use as Discord badges and an achievements profile page for each user that displays them. Propose 10 achievements." Then: "Finish M12's open items first, then build M14." The design is in docs/BADGES.md. Online 1v1 only.
+- [x] Tier and achievement names, how-to text, colours, and 16×16 pixel icons in `src/content/` (badges.ts, badgeArt.ts). `npx tsx tools/badge-png.ts` writes the Discord role icons (64 and 128 px) to `assets/discord/` with no new dependency.
+- [x] A pure evaluator in `src/achievements/` (no Phaser, no `Math.random`, same lint and architecture rules as the sim). It credits only the witch you were steering (`stepWorld`'s new `steered`), with tier thresholds 1/3/5/7/9. The online room hands each finished match to the server (`matchRecorded`).
+- [x] Storage: a `spellstick_live` database on the shared Postgres server (`pg` the only new dependency), with migrations in code. With no database set, badges are off and everything else works.
+- [x] The Spellstick Live bot gives the tier role (only the highest) after a promotion, and puts it right at sign-in. Skipped when the bot token or role IDs aren't set.
+- [x] A profile page at `/profile/<id>` and `/profile/me`, from your name on the title and from seated names in the lobby. The online results screen shows what you unlocked and any new rank.
+- [x] Unlinking deletes the online record and the tier role, and the unlink screen says what's kept. Your own profile has Delete my record.
+- [x] Tests:
+  - Every achievement, earned and not.
+  - The counting rules and who gets credit.
+  - The server service and role sync (fake Discord).
+  - The Postgres store (real Postgres when `TEST_DATABASE_URL` is set).
+  - The profile API and the unlink deletion.
+  - The room hook.
+  - Playwright: the profile page, with screenshots.
+  - The sim reports each achievement's unlock rate, and two thresholds were tuned from it.
+- [x] Infra behind `badgesEnabled` (off by default), and Paul's one-time setup in infra/README.md, "Badges", and docs/PLAYTEST.md.
+- [ ] Paul's setup (roles, bot, Key Vault, database login), then a real match. The "What's new" entry is added once badges are live.
 - **Done when:** two Darkspace members play an online match to the final whistle, both see First Whistle on results and on their profile, and both get the Prep Witch role in Discord.
 
 ## Discord touches (planned, was part of M13)

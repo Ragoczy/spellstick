@@ -105,7 +105,7 @@ Local 2-player, mobile/touch, accounts and leaderboards, season mode, player pro
 
 Online 1v1 is no longer out of scope: see §11 (Paul, 2026-10-15).
 
-Achievements, tier roles in Discord, and a profile page are in scope for online play only (M14, planned): see docs/BADGES.md (Paul, 2026-10-16). Single-player progression stays out of scope.
+Achievements, tier roles in Discord, and a profile page are in scope for online play only (M14): see docs/BADGES.md (Paul, 2026-10-16). Single-player progression stays out of scope.
 
 ## 11. Online play (Paul, 2026-10-15)
 

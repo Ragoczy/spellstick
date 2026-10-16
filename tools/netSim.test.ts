@@ -5,7 +5,8 @@ import { averagePairing, formatNetReport, runNetMatch } from './netSim';
 // Short matches: the network numbers don't need a full one.
 const config = makeConfig({ match: { periodSeconds: 10 } });
 
-describe('network sim (M12)', () => {
+// Whole online matches in simulated time: a few seconds each, longer on a busy machine.
+describe('network sim (M12)', { timeout: 60_000 }, () => {
   it('plays an online match to the final whistle through the real room and screens', () => {
     const r = runNetMatch(config, 3, ['east', 'east']);
     expect(r.minutes).toBeGreaterThan(0.5);

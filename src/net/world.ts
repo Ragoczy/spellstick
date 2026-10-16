@@ -71,6 +71,8 @@ export interface WorldStep {
   events: SimEvent[];
   /** The command every witch got (empty while a replay holds the match). */
   inputs: InputCommand[];
+  /** The witch each side's person steered this tick, or null (no person, or a replay holding the match). */
+  steered: [number | null, number | null];
 }
 
 /**
@@ -97,7 +99,7 @@ export function stepWorld(
       const skipped = people.length > 0 && people.every((t) => r.skipped[t]);
       if (r.ticksLeft <= 0 || skipped) world.replay = null;
       world.match.events = [];
-      return { events: [], inputs: [] };
+      return { events: [], inputs: [], steered: [null, null] };
     }
   }
 
@@ -105,6 +107,10 @@ export function stepWorld(
   for (const t of SIDES) {
     if (sides[t]?.switchPlayer) world.control[t] = switchControl(m, t, world.control[t]);
   }
+  const steered: [number | null, number | null] = [
+    sides[0] ? world.control[0] : null,
+    sides[1] ? world.control[1] : null,
+  ];
   const inputs = m.players.map((p) => {
     const side = sides[p.team];
     return side && p.id === world.control[p.team] ? toCommand(side) : other(p.id);
@@ -121,5 +127,5 @@ export function stepWorld(
       };
     }
   }
-  return { events: m.events, inputs };
+  return { events: m.events, inputs, steered };
 }

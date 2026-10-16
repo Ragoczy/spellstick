@@ -47,6 +47,13 @@ param customDomain string = ''
 @description('The managed certificate for customDomain (its resource ID in the environment).')
 param customDomainCertificateId string = ''
 
+@description('Badges (M14): a database on the shared Postgres server, and the Spellstick Live bot token from Key Vault. Turn on only once the Key Vault secret and the database login exist (infra/README.md, "Badges"); until then the game runs with badges off.')
+param badgesEnabled bool = false
+param postgresServerName string = 'psql-ha7siia4h4zia'
+param badgesDatabaseName string = 'spellstick_live'
+@description('Badges (M14): the five tier role IDs in the Darkspace server, lowest tier first, comma-separated. Not secret.')
+param tierRoleIds string = ''
+
 @secure()
 @description('Signs the session cookies. Generated fresh on every run of this template, which logs everyone out; pass the same value to keep sessions.')
 param sessionSecret string = '${newGuid()}${newGuid()}'
@@ -63,6 +70,11 @@ var sharedSettings = [
   { env: 'DISCORD_ADMIN_ROLE_IDS', secret: 'Integrations--Discord--AdminRoleIds' }
   { env: 'ADMIN_DISCORD_IDS', secret: 'Integrations--Discord--AdminUserIds' }
 ]
+
+// Badges (M14): the bot that gives out tier roles. A Key Vault reference that doesn't exist
+// stops the app from starting, so this is only added once badges are turned on.
+var badgeSettings = badgesEnabled ? [{ env: 'DISCORD_BOT_TOKEN', secret: 'SpellstickLiveBotToken' }] : []
+var appSettings = concat(sharedSettings, badgeSettings)
 
 var tags = { app: 'game-spellstick' }
 
@@ -90,7 +102,10 @@ module shared 'modules/shared.bicep' = {
   params: {
     registryName: registryName
     keyVaultName: keyVaultName
-    sharedSecretNames: map(sharedSettings, s => s.secret)
+    sharedSecretNames: map(appSettings, s => s.secret)
+    badgesEnabled: badgesEnabled
+    postgresServerName: postgresServerName
+    badgesDatabaseName: badgesDatabaseName
     containerAppsEnvironmentName: containerAppsEnvironmentName
     appPrincipalId: identities.outputs.appPrincipalId
     deployPrincipalId: identities.outputs.deployPrincipalId
@@ -111,8 +126,17 @@ module app 'modules/app.bicep' = {
     appIdentityId: identities.outputs.appIdentityId
     deployPrincipalId: identities.outputs.deployPrincipalId
     keyVaultUrl: 'https://${keyVaultName}${environment().suffixes.keyvaultDns}'
-    sharedSettings: sharedSettings
+    sharedSettings: appSettings
     discordClientId: discordClientId
+    badges: badgesEnabled
+      ? {
+          dbHost: '${postgresServerName}.postgres.database.azure.com'
+          dbName: badgesDatabaseName
+          dbUser: identities.outputs.appIdentityName
+          clientId: identities.outputs.appClientId
+          tierRoleIds: tierRoleIds
+        }
+      : {}
     gameAllowedRoleIds: gameAllowedRoleIds
     minReplicas: minReplicas
     customDomain: customDomain

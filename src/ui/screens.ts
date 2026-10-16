@@ -1,3 +1,13 @@
+import type { ProfileView } from '../achievements';
+import { badgeSvg } from '../content/badgeArt';
+import {
+  ACHIEVEMENT_ACCENT,
+  ACHIEVEMENT_IDS,
+  ACHIEVEMENTS,
+  BADGE_TEXT,
+  howToEarn,
+  TIERS,
+} from '../content/badges';
 import { CHANGELOG, changelogDate, type ChangelogEntry } from '../content/changelog';
 import { SPELLS } from '../content/spells';
 import { ONLINE_TEXT } from '../content/online';
@@ -17,6 +27,8 @@ import { DISCORD_SIGN_IN_MESSAGES, type AuthState } from './auth';
 import { PAD_BINDINGS, PAD_LABEL, type PadButton } from './gamepad';
 import { PRIVACY_URL, TERMS_URL } from './links';
 import type { TeamTally } from './matchStats';
+import type { BadgeNews } from './online';
+import { hasProfile } from './profileApi';
 import { REPORT_CATEGORIES, REPORT_EMAIL, type ReportCategory, type Reporter } from './report';
 import { fillControls, nextUnfinished } from './training';
 
@@ -58,6 +70,8 @@ export interface TitleActions {
   report(): void;
   login(): void;
   logout(): void;
+  /** Your profile: tier and achievements (M14). */
+  profile(): void;
 }
 
 /**
@@ -88,7 +102,7 @@ export function titleScreen(
     'title',
     el('h1', { class: 'title-logo' }, 'SPELLSTICK'),
     el('p', { class: 'tagline' }, 'Full-contact magical box lacrosse. Witches, sticks, and spells.'),
-    accountLine(auth, a.logout, inDiscord),
+    accountLine(auth, a.logout, a.profile, inDiscord),
     el(
       'div',
       { class: 'stack' },
@@ -129,7 +143,12 @@ function policyLinks(): HTMLAnchorElement[] {
 }
 
 /** Who's logged in (avatar, name, log out), or why to log in. */
-function accountLine(auth: AuthState, logout: () => void, inDiscord: boolean): HTMLElement {
+function accountLine(
+  auth: AuthState,
+  logout: () => void,
+  profile: () => void,
+  inDiscord: boolean,
+): HTMLElement {
   if (auth.status === 'in') {
     const avatar = el('img', {
       class: 'avatar',
@@ -139,11 +158,18 @@ function accountLine(auth: AuthState, logout: () => void, inDiscord: boolean): H
       height: '28',
     });
     avatar.referrerPolicy = 'no-referrer';
+    // Your avatar and name open your profile (M14).
+    const me = el(
+      'button',
+      { class: 'account-profile', type: 'button', title: BADGE_TEXT.viewProfile },
+      avatar,
+      el('span', { class: 'account-name' }, auth.user.username),
+    );
+    me.addEventListener('click', profile);
     return el(
       'div',
       { class: 'account', 'aria-label': 'Logged in' },
-      avatar,
-      el('span', { class: 'account-name' }, auth.user.username),
+      me,
       ...(inDiscord ? [] : [button('Log out', logout, 'btn small')]),
     );
   }
@@ -300,11 +326,16 @@ export function unlinkScreen(a: { confirm(): Promise<boolean>; cancel(): void })
         {},
         'your saved team, opponent, difficulty, spells, sound setting, and training progress in this browser',
       ),
+      el(
+        'li',
+        {},
+        'your online record on the server: achievements, rank, and match, win, and goal counts, and your tier role in the Discord server',
+      ),
     ),
     el(
       'p',
       { class: 'settings-note' },
-      "That's everything: Spellstick keeps no stats, match history, or profile on its server, and never kept your Discord login token. If you're logged in on another device, log out there too.",
+      "That's everything. The server keeps only that online record (with your Discord name and picture, for your profile page): no match history, and never your Discord login token. If you're logged in on another device, log out there too.",
     ),
     el('p', {}, "This can't be undone. You can play again later by reconnecting, but you'll start fresh."),
     el('label', { for: 'unlink-confirm', class: 'confirm-label' }, `Type ${UNLINK_CONFIRM_WORD} to confirm`),
@@ -670,7 +701,12 @@ export interface ResultsData {
 export function resultsScreen(
   r: ResultsData,
   a: { rematch(): void; menu(): void },
-  online?: { mySide: Seat | null; players: [string | null, string | null] },
+  online?: {
+    mySide: Seat | null;
+    players: [string | null, string | null];
+    /** What you earned (M14), once the server says; null until then or if the match didn't count. */
+    badges?: BadgeNews | null;
+  },
 ): HTMLElement {
   const home = TEAMS[r.home];
   const away = TEAMS[r.away];
@@ -700,6 +736,7 @@ export function resultsScreen(
     ),
     el('p', { class: 'verdict' }, verdict),
     ...(who ? [who] : []),
+    ...(online?.badges ? [badgeNews(online.badges)] : []),
     el(
       'table',
       { class: 'stats' },
@@ -734,6 +771,8 @@ export interface LobbyActions {
   watch(): void;
   copyLink(): void;
   leave(): void;
+  /** Someone's profile (M14). */
+  profile(id: string): void;
 }
 
 /**
@@ -778,7 +817,11 @@ export function lobbyScreen(
       'div',
       { class: `seat${who?.id === me ? ' mine' : ''}`, style: `border-color:${hex(team.color)}` },
       el('h3', { style: `color:${hex(team.color)}` }, team.name),
-      el('p', { class: 'seat-name' }, name),
+      el(
+        'p',
+        { class: 'seat-name' },
+        who && hasProfile(who.id) ? button(name, () => a.profile(who.id), 'name-link') : name,
+      ),
       el('p', { class: 'seat-spells' }, spells),
       el('p', { class: 'seat-ready' }, who?.ready ? `✓ ${ONLINE_TEXT.readyMark}` : ''),
       ...actions,
@@ -885,5 +928,198 @@ export function onlineMenuScreen(a: { resume(): void; controls(): void; leave():
       button('Controls', a.controls),
       button(ONLINE_TEXT.leaveMatch, a.leave),
     ),
+  );
+}
+
+// ---- Badges and achievements (M14, docs/BADGES.md) ----
+
+/** One piece of badge art, drawn as SVG (our own static markup). */
+function badgeIcon(
+  art: Parameters<typeof badgeSvg>[0],
+  accent: string,
+  size: number,
+  cls = 'badge-icon',
+): HTMLElement {
+  const span = el('span', { class: cls, 'aria-hidden': 'true' });
+  span.innerHTML = badgeSvg(art, accent, size);
+  return span;
+}
+
+/** The results screen's line of what you just earned. */
+function badgeNews(news: BadgeNews): HTMLElement {
+  const parts: HTMLElement[] = [];
+  if (news.promoted && news.tier > 0) {
+    const t = TIERS[news.tier - 1]!;
+    parts.push(
+      el(
+        'p',
+        { class: 'new-rank' },
+        badgeIcon(t.art, t.colour, 32),
+        el('span', { style: `color:${t.colour}` }, BADGE_TEXT.newRank(t.name)),
+      ),
+    );
+  }
+  if (news.unlocked.length > 0) {
+    parts.push(
+      el(
+        'p',
+        { class: 'unlocked' },
+        `${BADGE_TEXT.unlocked}: `,
+        ...news.unlocked.flatMap((id, i) => [
+          ...(i > 0 ? [' · '] : []),
+          el(
+            'span',
+            { class: 'unlocked-one' },
+            badgeIcon(ACHIEVEMENTS[id].art, ACHIEVEMENT_ACCENT, 20),
+            ACHIEVEMENTS[id].name,
+          ),
+        ]),
+      ),
+    );
+  }
+  return el('div', { class: 'badge-news', role: 'status' }, ...parts);
+}
+
+/** What the profile screen shows: a profile, nobody's record yet, or profiles unavailable. */
+export type ProfileContent =
+  | { kind: 'ok'; view: ProfileView }
+  | { kind: 'none'; name: string | null; avatarUrl: string | null }
+  | { kind: 'unavailable' }
+  | { kind: 'loading' };
+
+export interface ProfileActions {
+  back(): void;
+  /** Your own profile only: delete your record. Resolves false if it didn't work. */
+  deleteRecord?(): Promise<boolean>;
+}
+
+/** Someone's profile (M14): their tier badge, the ladder to the next, and all ten achievements. */
+export function profileScreen(content: ProfileContent, a: ProfileActions): HTMLElement {
+  const back = button(BADGE_TEXT.back, a.back, 'btn primary');
+  if (content.kind === 'loading' || content.kind === 'unavailable') {
+    return screen(
+      'profile',
+      el('h2', {}, BADGE_TEXT.profileTitle),
+      el('p', { class: 'settings-note' }, content.kind === 'loading' ? '…' : BADGE_TEXT.unavailable),
+      el('div', { class: 'actions' }, back),
+    );
+  }
+  const view = content.kind === 'ok' ? content.view : null;
+  const name = view?.name ?? (content.kind === 'none' ? content.name : null) ?? '';
+  const avatarUrl = view?.avatarUrl ?? (content.kind === 'none' ? content.avatarUrl : null);
+  const tier = view?.tier ?? 0;
+  const t = tier > 0 ? TIERS[tier - 1]! : null;
+
+  const avatar = avatarUrl
+    ? el('img', { class: 'avatar', src: avatarUrl, alt: '', width: '48', height: '48' })
+    : null;
+  if (avatar) avatar.referrerPolicy = 'no-referrer';
+  const head = el(
+    'div',
+    { class: 'profile-head' },
+    ...(avatar ? [avatar] : []),
+    el(
+      'div',
+      { class: 'profile-who' },
+      el('h2', {}, name),
+      el('p', { class: 'profile-rank', style: t ? `color:${t.colour}` : '' }, t ? t.name : BADGE_TEXT.noTier),
+    ),
+    t ? badgeIcon(t.art, t.colour, 72, 'badge-icon big') : el('span'),
+  );
+
+  // The five tiers, reached ones lit, and how far to the next.
+  const ladder = el(
+    'div',
+    { class: 'tier-ladder', 'aria-label': t ? t.name : BADGE_TEXT.noTier },
+    ...TIERS.map((x) =>
+      el(
+        'span',
+        { class: `tier-step${x.tier <= tier ? ' reached' : ''}`, title: x.name },
+        badgeIcon(x.art, x.colour, 28),
+      ),
+    ),
+  );
+  const next =
+    view?.toNext === null
+      ? BADGE_TEXT.topTier
+      : BADGE_TEXT.toNext(view?.toNext ?? 1, TIERS[Math.min(tier, TIERS.length - 1)]!.name);
+
+  const earned = new Map(view?.achievements.map((x) => [x.id, x.unlockedAt]) ?? []);
+  const tiles = ACHIEVEMENT_IDS.map((id) => {
+    const info = ACHIEVEMENTS[id];
+    const at = earned.get(id);
+    const date = at ? new Date(at) : null;
+    const status = date
+      ? BADGE_TEXT.earned(
+          date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
+        )
+      : id === 'fullLibrary' && view
+        ? BADGE_TEXT.libraryProgress(view.spellsCast, view.spellsTotal)
+        : BADGE_TEXT.locked;
+    return el(
+      'li',
+      { class: `ach${date ? ' earned' : ' locked'}` },
+      badgeIcon(info.art, ACHIEVEMENT_ACCENT, 40),
+      el(
+        'div',
+        { class: 'ach-text' },
+        el('strong', {}, info.name),
+        el('span', {}, howToEarn(id)),
+        el('em', {}, status),
+      ),
+    );
+  });
+
+  const extra: HTMLElement[] = [];
+  if (a.deleteRecord && view) {
+    const del = a.deleteRecord;
+    const note = el('p', { class: 'login-note', role: 'alert' });
+    const ask = button(
+      BADGE_TEXT.deleteRecord,
+      () => {
+        ask.hidden = true;
+        sure.hidden = false;
+      },
+      'btn small danger',
+    );
+    const yes = button(
+      BADGE_TEXT.deleteRecord,
+      () => {
+        yes.disabled = true;
+        void del().then((ok) => {
+          note.textContent = ok ? BADGE_TEXT.deleted : "Couldn't delete it right now. Try again in a moment.";
+          yes.disabled = ok;
+        });
+      },
+      'btn small danger',
+    );
+    const sure = el(
+      'div',
+      { class: 'delete-confirm' },
+      el('p', { class: 'settings-note' }, BADGE_TEXT.deleteConfirm),
+      el(
+        'div',
+        { class: 'row' },
+        button('Cancel', () => ((sure.hidden = true), (ask.hidden = false)), 'btn small'),
+        yes,
+      ),
+    );
+    sure.hidden = true;
+    extra.push(el('div', { class: 'profile-delete' }, ask, sure, note));
+  }
+
+  return screen(
+    'profile',
+    head,
+    ladder,
+    el('p', { class: 'settings-note' }, t || view ? next : BADGE_TEXT.noTierHint),
+    ...(view
+      ? [el('p', { class: 'profile-career' }, BADGE_TEXT.career(view.matches, view.wins, view.goals))]
+      : []),
+    el('h3', {}, BADGE_TEXT.achievements),
+    el('ul', { class: 'ach-grid' }, ...tiles),
+    el('p', { class: 'settings-note' }, BADGE_TEXT.onlineOnly),
+    ...extra,
+    el('div', { class: 'actions' }, back),
   );
 }

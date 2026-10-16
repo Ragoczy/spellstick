@@ -334,16 +334,16 @@ describe('GET /api/auth/me and POST /api/auth/logout', () => {
   });
 });
 
-describe('POST /api/auth/unlink ("Unlink my Discord account")', () => {
+describe('POST /api/auth/unlink ("Unlink my Discord account")', async () => {
   const ID = '80351110224678912';
   const session = (claims: Partial<Parameters<typeof signJwt>[0]> = {}) =>
     `${SESSION_COOKIE}=${signJwt({ sub: ID, username: 'nelly', avatar: '8342729096ea3675442027381ff50dfe', role: 'player', iat: NOW, exp: NOW + 100, ...claims }, SECRET)}`;
   const unlinkReq = (headers: Record<string, string>, origin = CUSTOM) =>
     req(`${origin}/api/auth/unlink`, { origin, ...headers });
 
-  it('ends the session: the cookie is cleared with the domain it was set with', () => {
+  it('ends the session: the cookie is cleared with the domain it was set with', async () => {
     const d = deps();
-    const r = unlink(unlinkReq({ cookie: session() }), d);
+    const r = await unlink(unlinkReq({ cookie: session() }), d);
     expect(r.status).toBe(200);
     expect(r.jsonBody).toEqual({ unlinked: true });
     expect(r.headers!['Cache-Control']).toBe('no-store');
@@ -353,13 +353,13 @@ describe('POST /api/auth/unlink ("Unlink my Discord account")', () => {
       path: '/',
       domain: '.games.darkspace.press',
     });
-    const onAzure = unlink(unlinkReq({ cookie: session() }, AZURE), deps());
+    const onAzure = await unlink(unlinkReq({ cookie: session() }, AZURE), deps());
     expect(cookie(onAzure, SESSION_COOKIE)!.domain).toBeUndefined();
   });
 
-  it('writes one audit line with only the time and "account unlinked", and keeps no identifier', () => {
+  it('writes one audit line with only the time and "account unlinked", and keeps no identifier', async () => {
     const d = deps();
-    const r = unlink(unlinkReq({ cookie: session() }), d);
+    const r = await unlink(unlinkReq({ cookie: session() }), d);
     expect(d.logs).toEqual([unlinkAuditLine(NOW)]);
     expect(d.logs[0]).toBe(`audit: ${new Date(NOW * 1000).toISOString()} account unlinked`);
     // Nothing the server says or writes after an unlink carries the player's Discord identity.
@@ -367,28 +367,41 @@ describe('POST /api/auth/unlink ("Unlink my Discord account")', () => {
     for (const id of [ID, 'nelly', '8342729096ea3675442027381ff50dfe']) expect(everything).not.toContain(id);
   });
 
-  it("doesn't call Discord (the shared app's authorization is left alone)", () => {
+  it("doesn't call Discord (the shared app's authorization is left alone)", async () => {
     const discord = fakeDiscord();
-    unlink(unlinkReq({ cookie: session() }), deps({ fetch: discord.fetch }));
+    await unlink(unlinkReq({ cookie: session() }), deps({ fetch: discord.fetch }));
     expect(discord.calls).toEqual([]);
   });
 
-  it('needs a valid session, and writes no audit line without one', () => {
+  it('needs a valid session, and writes no audit line without one', async () => {
     for (const c of [undefined, session({ exp: NOW }), `${SESSION_COOKIE}=forged.token.here`]) {
       const d = deps();
-      const r = unlink(unlinkReq(c ? { cookie: c } : {}), d);
+      const r = await unlink(unlinkReq(c ? { cookie: c } : {}), d);
       expect(r.status).toBe(401);
       expect(r.cookies).toBeUndefined();
       expect(d.logs).toEqual([]);
     }
   });
 
-  it("refuses requests from another site's pages", () => {
+  it('deletes the online record first (M14), and changes nothing if that fails', async () => {
+    const forgot: string[] = [];
+    const d = { ...deps(), forgetPlayer: (id: string) => (forgot.push(id), Promise.resolve(true)) };
+    const r = await unlink(unlinkReq({ cookie: session() }), d);
+    expect(r.status).toBe(200);
+    expect(forgot).toEqual([ID]);
+    const failing = { ...deps(), forgetPlayer: () => Promise.resolve(false) };
+    const f = await unlink(unlinkReq({ cookie: session() }), failing);
+    expect(f.status).toBe(503);
+    expect(f.cookies).toBeUndefined();
+    expect(failing.logs).toEqual([]);
+  });
+
+  it("refuses requests from another site's pages", async () => {
     for (const origin of [undefined, 'https://evil.example']) {
       const d = deps();
       const headers: Record<string, string> = { cookie: session() };
       if (origin) headers.origin = origin;
-      const r = unlink(req(`${CUSTOM}/api/auth/unlink`, headers), d);
+      const r = await unlink(req(`${CUSTOM}/api/auth/unlink`, headers), d);
       expect(r.status).toBe(403);
       expect(r.cookies).toBeUndefined();
       expect(d.logs).toEqual([]);

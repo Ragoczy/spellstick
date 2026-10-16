@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { MatchRecord } from '../achievements';
 import { makeConfig, secondsToTicks, type SimConfig } from '../sim';
 import type { MatchSummary } from './netStats';
 import type { ByeReason, RoomView, ServerMessage } from './protocol';
@@ -12,6 +13,7 @@ function setup(config: SimConfig = makeConfig(), code = 'abc123') {
   const sent = new Map<number, ServerMessage[]>();
   const closed: [number, ByeReason][] = [];
   const summaries: MatchSummary[] = [];
+  const records: MatchRecord[] = [];
   const room = new Room(
     code,
     config,
@@ -19,6 +21,7 @@ function setup(config: SimConfig = makeConfig(), code = 'abc123') {
       send: (conn, data) => sent.set(conn, [...(sent.get(conn) ?? []), JSON.parse(data) as ServerMessage]),
       close: (conn, reason) => closed.push([conn, reason]),
       matchOver: (summary) => summaries.push(summary),
+      matchRecorded: (record) => records.push(record),
     },
     () => 99,
   );
@@ -28,7 +31,7 @@ function setup(config: SimConfig = makeConfig(), code = 'abc123') {
   const ticks = (n: number) => {
     for (let i = 0; i < n; i++) room.tick();
   };
-  return { room, sent, closed, summaries, last, view, ticks, config };
+  return { room, sent, closed, summaries, records, last, view, ticks, config };
 }
 
 /** Ann (conn 1) home, Bea (conn 2) away, both ready, through the countdown. */
@@ -165,6 +168,35 @@ describe('Room', () => {
     expect(v.lastResult!.score[0]).not.toBe(v.lastResult!.score[1]);
     expect(v.seats).toEqual(['1', null]);
     expect(s.last(1, 'snap')!.snap.world.match.phase).toBe('final');
+  });
+
+  it('hands a finished match to the server for achievements: who played, who stayed, and the credit (M14)', () => {
+    const s = setup(makeConfig({ match: { periods: 1, periodSeconds: 20 } }));
+    startMatch(s);
+    s.room.leave(2); // Bea quits
+    for (let i = 0; i < 200_000 && s.room.world; i++) s.room.tick();
+    expect(s.records).toHaveLength(1);
+    const r = s.records[0]!;
+    expect(r.final).toBe(true);
+    expect(r.seats).toEqual([
+      { id: '1', name: 'Ann', avatarUrl: 'a', guest: false, connectedAtEnd: true },
+      { id: '2', name: 'Bea', avatarUrl: 'b', guest: false, connectedAtEnd: false },
+    ]);
+    s.ticks(1);
+    expect(r.credit.score).toEqual(s.view(1).lastResult!.score);
+  });
+
+  it('marks guests, and records nothing for an abandoned match (M14)', () => {
+    const s = setup();
+    s.room.join(1, { ...ANN, guest: true });
+    s.room.join(2, BEA);
+    s.room.message(1, { type: 'seat', seat: 0 });
+    s.room.message(2, { type: 'seat', seat: 1 });
+    s.room.message(1, { type: 'ready', ready: true });
+    s.room.message(2, { type: 'ready', ready: true });
+    s.ticks(secondsToTicks(s.config.online.countdownSeconds, s.config) + 30);
+    s.room.abandon();
+    expect(s.records).toEqual([]);
   });
 
   it("plays each seat's own three spells, picked in the lobby (M13)", () => {

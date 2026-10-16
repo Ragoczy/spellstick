@@ -626,6 +626,25 @@ export const DEFAULT_CONFIG = {
     aiLevel: 'normal' as 'easy' | 'normal' | 'hard',
   },
 
+  /** Achievements and tier roles for online play (M14, docs/BADGES.md). Names are in src/content/badges.ts. */
+  badges: {
+    /** Achievements unlocked for each tier, lowest first (five tiers). */
+    tierThresholds: [1, 3, 5, 7, 9] as number[],
+    /** Witch's Hat Trick: goals you score yourself in one match. */
+    hatTrickGoals: 3,
+    /** Into the Boards: opponents you slam into the boards in one match. */
+    boardSlams: 3,
+    /** A board slam counts as yours if it comes this soon after your hit (s). */
+    slamCreditSeconds: 1.5,
+    /**
+     * Light Fingers: balls you knock loose in one match. Per the sim, 10 is about half of
+     * matches with the starting spells (Thunderclap loosens a lot) and fewer with random ones.
+     */
+    loosens: 10,
+    /** Comeback: win after trailing by at least this many goals (about 1 in 20 matches; 3 was under 1%). */
+    comebackDeficit: 2,
+  },
+
   /** Health checks reported by the headless sim. */
   diagnostics: {
     /** A player within `stuckRadius` meters of one spot for longer than this, during live play, is "stuck". The radius is about 2.7% of the distance a runner covers in that time at top speed. */

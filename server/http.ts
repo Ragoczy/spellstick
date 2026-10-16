@@ -15,6 +15,7 @@ import {
   type AuthResponse,
   type ResponseCookie,
 } from './auth/auth.js';
+import type { Badges } from './badges/service.js';
 
 /**
  * The whole server: the built game from dist/ plus the Discord login routes (log in, log out,
@@ -26,6 +27,8 @@ export interface ServerOptions {
   /** The built game (Vite's output). */
   distDir: string;
   deps: AuthDeps;
+  /** Achievements and profiles (M14), or null with no database. */
+  badges?: Badges | null;
 }
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
@@ -207,6 +210,54 @@ export function createHandler(opts: ServerOptions): Handler {
     send(res, 200, headers, req.method === 'HEAD' ? undefined : body);
   };
 
+  const sendJson = (res: ServerResponse, status: number, body: unknown) =>
+    send(
+      res,
+      status,
+      { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+      JSON.stringify(body),
+    );
+
+  /**
+   * Profiles (M14): GET /api/profile/me and /api/profile/<discord id> for anyone signed in;
+   * DELETE /api/profile/me deletes your own record (and your tier role).
+   */
+  const profileRoute = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    method: string,
+    path: string,
+    origin: string,
+  ): Promise<void> => {
+    const who = me(
+      {
+        url: `${origin}${req.url ?? '/'}`,
+        headers: {
+          get: (name) => {
+            const v = req.headers[name.toLowerCase()];
+            return Array.isArray(v) ? v.join(', ') : (v ?? null);
+          },
+        },
+      },
+      opts.deps,
+    );
+    if (who.status !== 200) return sendJson(res, 401, { error: 'unauthenticated' });
+    const viewer = (who.jsonBody as { id: string }).id;
+    const target = path.slice('/api/profile/'.length);
+    const id = target === 'me' ? viewer : target;
+    if (!/^\d{5,25}$/.test(id)) return sendJson(res, 404, { error: 'not_found' });
+    const badges = opts.badges;
+    if (method === 'DELETE') {
+      if (target !== 'me') return sendText(res, 405, 'Method not allowed', { Allow: 'GET' });
+      if (!badges) return sendJson(res, 503, { error: 'unavailable' });
+      return sendJson(res, 200, { deleted: await badges.deleteRecord(viewer) });
+    }
+    if (method !== 'GET') return sendText(res, 405, 'Method not allowed', { Allow: 'GET, DELETE' });
+    if (!badges) return sendJson(res, 503, { error: 'unavailable' });
+    const view = await badges.profile(id);
+    return view ? sendJson(res, 200, view) : sendJson(res, 404, { error: 'not_found' });
+  };
+
   const handle: Handler = async (req, res) => {
     const method = req.method ?? 'GET';
     const url = new URL(req.url ?? '/', 'http://placeholder');
@@ -224,6 +275,10 @@ export function createHandler(opts: ServerOptions): Handler {
       (sender !== undefined && sender === activityOrigin(opts.deps.env.DISCORD_CLIENT_ID));
     if (method !== 'GET' && method !== 'HEAD' && !fromGame) {
       return sendText(res, 403, 'Forbidden');
+    }
+
+    if (path === '/api/profile' || path.startsWith('/api/profile/')) {
+      return profileRoute(req, res, method, path, origin);
     }
 
     if (path === '/api' || path.startsWith('/api/')) {

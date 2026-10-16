@@ -13,8 +13,10 @@ import {
   type RoomUser,
   type ServerMessage,
 } from '../src/net/index.js';
+import type { MatchRecord } from '../src/achievements/index.js';
 import { makeConfig, type SimConfig } from '../src/sim/index.js';
 import { activityOrigin, me, type AuthDeps, type AuthRequest, type MeBody } from './auth/auth.js';
+import type { Badges } from './badges/service.js';
 import { publicOrigin } from './http.js';
 
 /**
@@ -30,6 +32,8 @@ export interface OnlineOptions {
    * never set ONLINE_GUESTS in Azure.
    */
   guests?: boolean;
+  /** Achievements (M14), or null/absent with no database: finished matches go here. */
+  badges?: Badges | null;
   config?: SimConfig;
   /** Tests only: run this many times faster than real time... */
   timeScale?: number;
@@ -54,6 +58,8 @@ const ROOM_CODE_CHARS = 'abcdefghijkmnpqrstuvwxyz23456789';
 
 interface Conn {
   id: number;
+  /** Who's on it (their Discord id, or a guest id). */
+  userId: string;
   ws: WebSocket;
   room: Room;
   /** When the outstanding ping went out (null: none), and when the last answer came (ms). */
@@ -101,6 +107,25 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
     },
     // One line per online match: how it went over the network (M12; infra/README.md, "Logs").
     matchOver: (summary: MatchSummary) => opts.deps.log(`online: match summary ${JSON.stringify(summary)}`),
+    // Achievements (M14): saved after the match, then each player hears what they earned.
+    matchRecorded: (record: MatchRecord) => {
+      const badges = opts.badges;
+      if (!badges) return;
+      badges
+        .record(record)
+        .then((news) => {
+          for (const n of news) {
+            const msg: ServerMessage = {
+              type: 'badges',
+              unlocked: n.unlocked,
+              tier: n.tier,
+              promoted: n.promoted,
+            };
+            for (const c of conns.values()) if (c.userId === n.userId) c.ws.send(JSON.stringify(msg));
+          }
+        })
+        .catch((e: unknown) => opts.deps.log(`badges: recording a match failed (${(e as Error).name})`));
+    },
   };
 
   const newCode = (): string => {
@@ -138,7 +163,7 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
     }
     if (!opts.guests) return null;
     const n = randomInt(1000, 10_000);
-    return { id: `guest-${n}-${randomInt(1e9)}`, name: `Guest ${n}`, avatarUrl: '' };
+    return { id: `guest-${n}-${randomInt(1e9)}`, name: `Guest ${n}`, avatarUrl: '', guest: true };
   };
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -168,6 +193,7 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
 
       const conn: Conn = {
         id: nextConn++,
+        userId: user.id,
         ws,
         room,
         pingSentAt: null,

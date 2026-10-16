@@ -1,3 +1,4 @@
+import { CreditTracker, type MatchRecord, type SeatRecord } from '../achievements';
 import { createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS } from '../content/teams';
 import {
@@ -26,6 +27,8 @@ export interface RoomUser {
   id: string;
   name: string;
   avatarUrl: string;
+  /** Playing without signing in (local testing only): never earns achievements. */
+  guest?: boolean;
 }
 
 /** How a room reaches its connections. The server plugs WebSockets in; tests plug in arrays. */
@@ -34,6 +37,8 @@ export interface RoomPort {
   close(conn: number, reason: ByeReason): void;
   /** A match ended (or was abandoned): its network summary, for the server's log (M12). */
   matchOver?(summary: MatchSummary): void;
+  /** A match reached the final whistle: who played it and what they did, for achievements (M14). */
+  matchRecorded?(record: MatchRecord): void;
 }
 
 interface Member {
@@ -58,6 +63,10 @@ interface LiveMatch {
   ticksSinceSnapshot: number;
   /** How the match is going over the network (M12). */
   net: MatchNet;
+  /** What each side's person did, for achievements (M14). */
+  credit: CreditTracker;
+  /** Who sat in each seat at the opening faceoff. */
+  startSeats: [RoomUser | null, RoomUser | null];
 }
 
 const SEATS = [0, 1] as const;
@@ -277,6 +286,11 @@ export class Room {
       inputs: [],
       ticksSinceSnapshot: 0,
       net: new MatchNet(),
+      credit: new CreditTracker(
+        this.config,
+        world.match.players.map((p) => p.team),
+      ),
+      startSeats: [this.userIn(0), this.userIn(1)],
     };
     this.phase = 'match';
     this.matchNumber++;
@@ -293,13 +307,16 @@ export class Room {
     const sides = SEATS.map((s) => (present[s] ? live.queues[s].take(next) : null));
     const step = stepWorld(w, sides, (id) => live.controllers[id]!.decide(w.match, id), this.config);
     live.events.push(...step.events);
-    if (step.inputs.length > 0) live.inputs = step.inputs;
+    if (step.inputs.length > 0) {
+      live.inputs = step.inputs;
+      live.credit.step(step.events, step.steered);
+    }
     this.countTick(live, present);
     const over = w.match.phase === 'final';
     if (++live.ticksSinceSnapshot >= this.config.online.snapshotEveryTicks || over) {
       this.sendSnapshot([...this.byConn.keys()]);
     }
-    if (over) this.endMatch(w);
+    if (over) this.endMatch(w, live);
   }
 
   /** The network numbers for one stepped tick. `stepped[seat]`: a person had that side. */
@@ -359,8 +376,9 @@ export class Room {
     if (everyone) for (const q of live.queues) q.slack = null;
   }
 
-  private endMatch(w: OnlineWorld): void {
+  private endMatch(w: OnlineWorld, live: LiveMatch): void {
     this.reportMatch('final');
+    this.recordMatch(live);
     const name = (id: string | null) => (id === null ? null : (this.members.get(id)?.user.name ?? null));
     this.lastResult = {
       score: [w.match.score[0], w.match.score[1]],
@@ -378,6 +396,29 @@ export class Room {
       }
     }
     this.dirty = true;
+  }
+
+  /** Hands the finished match to the server for achievements (M14). */
+  private recordMatch(live: LiveMatch): void {
+    if (!this.port.matchRecorded) return;
+    const seat = (s: Seat): SeatRecord | null => {
+      const u = live.startSeats[s];
+      if (!u) return null;
+      const m = this.members.get(u.id);
+      return {
+        id: u.id,
+        name: u.name,
+        avatarUrl: u.avatarUrl,
+        guest: u.guest === true,
+        connectedAtEnd: this.seats[s] === u.id && m?.conn != null,
+      };
+    };
+    this.port.matchRecorded({ final: true, seats: [seat(0), seat(1)], credit: live.credit.result() });
+  }
+
+  private userIn(s: Seat): RoomUser | null {
+    const id = this.seats[s];
+    return id === null ? null : (this.members.get(id)?.user ?? null);
   }
 
   private sendRoom(conn: number): void {

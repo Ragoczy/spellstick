@@ -33,5 +33,8 @@ resource githubMain 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedI
 
 output appIdentityId string = appIdentity.id
 output appPrincipalId string = appIdentity.properties.principalId
+// Badges (M14): the app signs in to Postgres as this identity.
+output appClientId string = appIdentity.properties.clientId
+output appIdentityName string = appIdentity.name
 output deployClientId string = deployIdentity.properties.clientId
 output deployPrincipalId string = deployIdentity.properties.principalId

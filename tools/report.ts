@@ -1,3 +1,4 @@
+import { ACHIEVEMENT_IDS } from '../src/content/badges';
 import type { SimConfig } from '../src/sim';
 
 /** Per-team counters (index 0 = home), for comparing playing styles (M9). */
@@ -74,12 +75,21 @@ export interface MatchStats {
   stuckPlayerIncidents: number;
   /** The same kinds of counts split by team: home, away. */
   teams: [TeamStats, TeamStats];
+  /**
+   * Achievements (M14) a first-time player on each side would unlock in this match, counted
+   * once per side: the witch a person would steer is the one control follows (as online).
+   */
+  achievementUnlocks: Record<string, number>;
 }
 
 /** Counters summed over all matches. */
-type Summed = Omit<MatchStats, 'ticks' | 'score' | 'spellCasts' | 'longestNoShotTicks' | 'teams'>;
+type Summed = Omit<
+  MatchStats,
+  'ticks' | 'score' | 'spellCasts' | 'longestNoShotTicks' | 'teams' | 'achievementUnlocks'
+>;
 
 export interface Report extends Summed {
+  achievementUnlocks: Record<string, number>;
   games: number;
   totalTicks: number;
   goals: number;
@@ -121,6 +131,7 @@ export function emptyMatchStats(): MatchStats {
     ticks: 0,
     score: [0, 0],
     spellCasts: {},
+    achievementUnlocks: {},
     longestNoShotTicks: 0,
     teams: [emptyTeamStats(), emptyTeamStats()],
   } as unknown as MatchStats;
@@ -137,6 +148,7 @@ export function createReport(): Report {
     awayWins: 0,
     ties: 0,
     spellCasts: {},
+    achievementUnlocks: {},
     longestNoShotTicks: 0,
     teams: [emptyTeamStats(), emptyTeamStats()],
   } as unknown as Report;
@@ -155,6 +167,7 @@ export function recordMatch(report: Report, m: MatchStats): void {
   for (const [spell, n] of Object.entries(m.spellCasts)) {
     report.spellCasts[spell] = (report.spellCasts[spell] ?? 0) + n;
   }
+  addCounts(report.achievementUnlocks, m.achievementUnlocks);
   report.longestNoShotTicks = Math.max(report.longestNoShotTicks, m.longestNoShotTicks);
   addTeamStats(report.teams[0], m.teams[0]);
   addTeamStats(report.teams[1], m.teams[1]);
@@ -174,11 +187,35 @@ export function mergeReports(a: Report, b: Report): Report {
     for (const [spell, n] of Object.entries(r.spellCasts)) {
       out.spellCasts[spell] = (out.spellCasts[spell] ?? 0) + n;
     }
+    addCounts(out.achievementUnlocks, r.achievementUnlocks);
     out.longestNoShotTicks = Math.max(out.longestNoShotTicks, r.longestNoShotTicks);
     addTeamStats(out.teams[0], r.teams[0]);
     addTeamStats(out.teams[1], r.teams[1]);
   }
   return out;
+}
+
+function addCounts(into: Record<string, number>, from: Record<string, number>): void {
+  for (const [k, n] of Object.entries(from)) into[k] = (into[k] ?? 0) + n;
+}
+
+/**
+ * Achievements (M14) meant to take skill or luck in one match: a sanity warning (never a
+ * failure) if a first-time player would unlock one in more than 60% of matches, or under 1%.
+ * First Whistle, Off the Mark, First Win, and the Witch's Hat Trick are early ones by design.
+ */
+export const SKILL_ACHIEVEMENTS = ['intoTheBoards', 'lightFingers', 'shutout', 'suddenDeath', 'comeback'];
+
+export function achievementWarnings(report: Report): string[] {
+  const players = Math.max(1, report.games * 2);
+  return SKILL_ACHIEVEMENTS.flatMap((id) => {
+    const rate = (report.achievementUnlocks[id] ?? 0) / players;
+    if (rate > 0.6)
+      return [`${id} unlocks in ${(rate * 100).toFixed(1)}% of player-matches (over 60%: too easy)`];
+    if (rate < 0.01)
+      return [`${id} unlocks in ${(rate * 100).toFixed(1)}% of player-matches (under 1%: nearly impossible)`];
+    return [];
+  });
 }
 
 /** Balance-sanity checks from CLAUDE.md. Warnings until M6, then hard failures. */
@@ -242,6 +279,11 @@ export function formatReport(
     `  crease violations           ${report.creaseViolations}  (${perGame(report.creaseViolations)} / game, ${report.goalsDisallowed} goals waved off)`,
     `  longest stretch w/o a shot  ${secs(report.longestNoShotTicks)} s`,
     `  stuck-player incidents      ${report.stuckPlayerIncidents}`,
+    `  achievements (M14), share of player-matches where a first-timer unlocks each:`,
+    ...ACHIEVEMENT_IDS.filter((id) => id !== 'fullLibrary').map(
+      (id) => `    ${id.padEnd(16)} ${pct(report.achievementUnlocks[id] ?? 0, report.games * 2).padStart(7)}`,
+    ),
+    ...achievementWarnings(report).map((w) => `    note: ${w}`),
     warnings.length > 0
       ? `  BALANCE WARNINGS:\n${warnings.map((w) => `    - ${w}`).join('\n')}`
       : '  balance: OK',

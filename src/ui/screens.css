@@ -744,3 +744,179 @@ body.pad-nav .choice:focus {
   min-height: 1.3em;
   font-size: 17px;
 }
+
+/* ---- Badges and achievements (M14) ---- */
+
+/* Your avatar and name on the title screen open your profile. */
+.account-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 2px 2px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.account-profile:hover,
+.account-profile:focus-visible {
+  border-color: var(--panel-edge);
+  background: rgba(255, 166, 48, 0.08);
+}
+
+/* A seated player's name in the lobby, as a link to their profile. */
+.name-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted rgba(242, 239, 230, 0.5);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.name-link:hover,
+.name-link:focus-visible {
+  color: var(--gold);
+}
+
+.badge-icon {
+  display: inline-flex;
+  line-height: 0;
+  image-rendering: pixelated;
+}
+.badge-icon svg {
+  display: block;
+}
+
+/* The results screen: what you just earned. */
+.badge-news {
+  margin: 4px 0 12px;
+}
+.badge-news p {
+  margin: 6px 0;
+}
+.new-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+}
+.unlocked {
+  color: var(--ink);
+}
+.unlocked-one {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* The profile page. Taller than the window on small screens: centred when it fits, from the top when it doesn't. */
+#profile {
+  align-items: flex-start;
+}
+#profile .panel {
+  max-width: 640px;
+  margin: auto 0;
+}
+.profile-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.profile-head .avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-edge);
+}
+.profile-who {
+  text-align: left;
+}
+.profile-who h2 {
+  margin: 0;
+}
+.profile-rank {
+  margin: 2px 0 0;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 700;
+}
+.tier-ladder {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.tier-step {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+.tier-step.reached {
+  opacity: 1;
+  filter: none;
+}
+.profile-career {
+  margin: 4px 0 8px;
+  color: var(--ink);
+}
+.ach-grid {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  text-align: left;
+}
+.ach {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid rgba(242, 239, 230, 0.15);
+  border-radius: 6px;
+}
+.ach.earned {
+  border-color: var(--panel-edge);
+  background: rgba(255, 166, 48, 0.07);
+}
+.ach.locked .badge-icon {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+.ach-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.ach-text strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.ach.locked .ach-text strong {
+  color: var(--ink-dim);
+}
+.ach-text em {
+  font-style: normal;
+  font-size: 12px;
+}
+.ach.earned .ach-text em {
+  color: var(--gold);
+}
+.profile-delete {
+  margin-top: 10px;
+}
+.delete-confirm .row {
+  justify-content: center;
+}

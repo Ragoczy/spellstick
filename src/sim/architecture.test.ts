@@ -29,6 +29,7 @@ describe('architecture rules', () => {
   const simFiles = sourceFiles(join(SRC, 'sim'));
   const aiFiles = sourceFiles(join(SRC, 'ai'));
   const netFiles = sourceFiles(join(SRC, 'net'));
+  const achievementFiles = sourceFiles(join(SRC, 'achievements'));
 
   it('finds the sim sources', () => {
     expect(simFiles.length).toBeGreaterThan(3);
@@ -44,14 +45,14 @@ describe('architecture rules', () => {
     },
   );
 
-  it.each([...simFiles, ...aiFiles, ...netFiles].map((f) => [relative(SRC, f), f]))(
+  it.each([...simFiles, ...aiFiles, ...netFiles, ...achievementFiles].map((f) => [relative(SRC, f), f]))(
     '%s does not use Math.random()',
     (_n, f) => {
       expect(code(f)).not.toMatch(/Math\s*\.\s*random/);
     },
   );
 
-  it.each([...aiFiles, ...netFiles].map((f) => [relative(SRC, f), f]))(
+  it.each([...aiFiles, ...netFiles, ...achievementFiles].map((f) => [relative(SRC, f), f]))(
     '%s does not import phaser, render, or ui',
     (_n, f) => {
       for (const spec of importsOf(code(f))) {

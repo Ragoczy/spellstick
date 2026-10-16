@@ -19,6 +19,18 @@ param customDomain string
 param customDomainCertificateId string
 @secure()
 param sessionSecret string
+@description('Badges (M14), or {} for off: the database (host, name, and the login and client ID of the app identity) and the tier role IDs.')
+param badges object = {}
+
+var badgesEnv = empty(badges)
+  ? []
+  : [
+      { name: 'DB_HOST', value: badges.dbHost }
+      { name: 'DB_NAME', value: badges.dbName }
+      { name: 'DB_USER', value: badges.dbUser }
+      { name: 'AZURE_CLIENT_ID', value: badges.clientId }
+      { name: 'DISCORD_TIER_ROLE_IDS', value: badges.tierRoleIds }
+    ]
 
 var containerAppsContributor = '358470bc-b998-42bd-ab17-a7e34c199c0f'
 
@@ -72,7 +84,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'DISCORD_CLIENT_ID', value: discordClientId }
             { name: 'GAME_ALLOWED_ROLE_IDS', value: gameAllowedRoleIds }
             { name: 'SESSION_SECRET', secretRef: 'session-secret' }
-          ], sharedEnv)
+          ], sharedEnv, badgesEnv)
           probes: [
             { type: 'Liveness', httpGet: { path: '/healthz', port: 8080 }, periodSeconds: 30 }
             { type: 'Readiness', httpGet: { path: '/healthz', port: 8080 }, periodSeconds: 10 }

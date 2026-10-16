@@ -1,14 +1,19 @@
 // This game's share of the aiuthor resources in rg-aiuthor. Adds only access grants:
 // - registry: the app pulls images; GitHub Actions pushes them (and reads the registry's address),
 // - "join" on the Container Apps environment for GitHub Actions, so it can update the app,
-// - read access to each shared Darkspace Games Discord setting in Key Vault, and nothing else there.
-// No database: the game is single-player and stores nothing server-side.
+// - read access to each shared Darkspace Games Discord setting in Key Vault, and nothing else there,
+// - with badges on (M14): a database on the shared Postgres server for players' achievements.
+//   The app's login to it is added with SQL (infra/README.md, "Badges"): Azure can only add
+//   Entra logins from inside the database.
 
 param registryName string
 param keyVaultName string
 @description('Key Vault secrets the app may read (the shared Discord settings).')
 param sharedSecretNames string[]
 param containerAppsEnvironmentName string
+param badgesEnabled bool
+param postgresServerName string
+param badgesDatabaseName string
 param appPrincipalId string
 param deployPrincipalId string
 
@@ -18,6 +23,16 @@ var roles = {
   reader: 'acdd72a7-3385-48ef-bd42-f606fba81ae7'
   keyVaultSecretsUser: '4633458b-17de-408a-b874-0445c86b69e6'
   containerAppsOperator: 'f3bd1b5c-91fa-40e7-afe7-0c11d331232c'
+}
+
+resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' existing = if (badgesEnabled) {
+  name: postgresServerName
+}
+
+resource badgesDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = if (badgesEnabled) {
+  parent: postgres
+  name: badgesDatabaseName
+  properties: { charset: 'UTF8', collation: 'en_US.utf8' }
 }
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {

@@ -17,3 +17,9 @@ param gameAllowedRoleIds = ''
 // this template keeps it.
 param customDomain = ''
 param customDomainCertificateId = ''
+
+// Badges (M14): off until the bot token is in Key Vault (SpellstickLiveBotToken) and the app's
+// database login exists (infra/README.md, "Badges"). Then set true and fill in the five tier
+// role IDs, lowest tier first.
+param badgesEnabled = false
+param tierRoleIds = ''

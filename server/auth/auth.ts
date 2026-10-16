@@ -60,6 +60,13 @@ export interface AuthDeps {
   nowSeconds: () => number;
   /** For failures and the unlink audit line only. Never pass it secrets, codes, tokens, or Discord IDs. */
   log: (message: string) => void;
+  /**
+   * Someone was let in, with their Darkspace server roles (M14: their tier role is put right).
+   * Called without waiting; it must not throw.
+   */
+  afterSignIn?: (user: { id: string; name: string; avatarUrl: string }, memberRoles: string[] | null) => void;
+  /** Unlinking: delete everything stored about this player first (M14). False if that failed. */
+  forgetPlayer?: (id: string) => Promise<boolean>;
 }
 
 export interface MeBody {
@@ -331,6 +338,10 @@ async function admit(
 
   const access = checkAccess(user.id, memberRoles, settings);
   if (!access.allowed) return { kind: 'refused', reason: access.reason };
+  deps.afterSignIn?.(
+    { id: user.id, name: user.username, avatarUrl: avatarUrl(user.id, user.avatar) },
+    memberRoles,
+  );
   return { kind: 'allowed', user, role: access.role };
 }
 
@@ -455,18 +466,23 @@ export const unlinkAuditLine = (nowSeconds: number) =>
   `audit: ${new Date(nowSeconds * 1000).toISOString()} account unlinked`;
 
 /**
- * POST /api/auth/unlink ("Unlink my Discord account"): the server stores nothing per player and
- * never kept Discord's token, so this ends the session and writes a time-only audit line. The
+ * POST /api/auth/unlink ("Unlink my Discord account"): deletes the player's online record
+ * (achievements, M14) and their tier role, then ends the session and writes a time-only audit
+ * line. If the record can't be deleted, nothing changes. Discord's token was never kept. The
  * browser clears its own saved settings. Discord's token revocation is not called (yet): the game
  * used to share the card game's Discord app, where revoking would have ended that game's sign-in too.
  */
-export function unlink(req: AuthRequest, deps: AuthDeps): AuthResponse {
+export async function unlink(req: AuthRequest, deps: AuthDeps): Promise<AuthResponse> {
   if (!sameOrigin(req)) return { status: 403, headers: NO_STORE, jsonBody: { error: 'bad_origin' } };
   const secret = deps.env.SESSION_SECRET;
   if (!secret) return notConfigured(deps, 'SESSION_SECRET');
   const token = parseCookies(req.headers.get('cookie')).get(SESSION_COOKIE);
-  if (!token || !verifyJwt(token, secret, deps.nowSeconds())) {
+  const claims = token ? verifyJwt(token, secret, deps.nowSeconds()) : null;
+  if (!claims) {
     return { status: 401, headers: NO_STORE, jsonBody: { error: 'unauthenticated' } };
+  }
+  if (deps.forgetPlayer && !(await deps.forgetPlayer(claims.sub))) {
+    return { status: 503, headers: NO_STORE, jsonBody: { error: 'unavailable' } };
   }
   deps.log(unlinkAuditLine(deps.nowSeconds()));
   return {

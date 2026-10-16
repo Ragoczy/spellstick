@@ -275,3 +275,24 @@ Append-only. Format: `YYYY-MM-DD — decision — why — how to change`.
     - A cap of 6 made Wi-Fi draw everyone else 39 cm off.
     - 3 is the middle.
   - **The N readout's "aim"** now shows the clock's live target (lead plus cushion).
+- 2026-10-16 — **M14 as built** (Paul: "Finish M12's open items first, then build M14"). Where it differs from the plan in docs/BADGES.md, or fills a gap:
+  - **Two tables, not three.** Career counts live on `players`, alongside the achievements table.
+  - **Migrations are code** (`server/migrations.ts`), so the one-file server bundle carries them.
+  - **Unlinking deletes the record itself.** The server's unlink deletes the record and the tier role before it ends the session (`AuthDeps.forgetPlayer`). If that fails, nothing changes and the screen says so, so "Nothing was deleted" stays true. This replaces the planned "Also delete my record" checkbox: unlinking already means starting fresh. Your own profile has **Delete my record** for keeping the login but not the record.
+  - **Who gets a goal.** "You" for a goal is whoever steered the shot, even if control moved before it went in.
+  - **Who gets a board slam.** The person whose check or Thunderclap hit that opponent within 1.5 s (`config.badges.slamCreditSeconds`). The sim's `boardSlam` event names only who hit the boards.
+  - **Tier role IDs are a plain template setting** (`tierRoleIds`, not secret). Only the bot token is in Key Vault (`SpellstickLiveBotToken`).
+  - **Infra is behind `badgesEnabled`.** A Key Vault reference to a secret that doesn't exist stops the app starting, so the switch stays off until the secret exists.
+  - **Badge news is its own message.** The server sends `badges` to every connection of that person once the record is saved. Pages from before ignore it, so `PROTOCOL_VERSION` stays 3.
+  - **Profiles need signing in**, like the whole site. Anyone signed in can see anyone's. Spells cast are a count only.
+  - **Role sync.** Discord is called only on a tier change and at sign-in, when the member's roles are known and only the difference is fixed. A 429 is waited out once; other failures are logged without IDs and the record is still saved.
+  - **No "What's new" entry yet.** Badges aren't live until Paul's setup, as with online play before.
+  - **Screens open at their top.** A focused button no longer scrolls them (`focus({ preventScroll: true })`), so a long screen like the profile opens at its header.
+- 2026-10-16 — **M14 tuning from the sim.** `npm run sim` now reports, per achievement, how often a first-time player on each side would unlock it in one match. "You" is the witch control follows, as online.
+  - **Light Fingers:** 3 loosened balls was nearly every match (96–100%), so it's now 10. That's about half of matches with the starting spells (Thunderclap loosens a lot) and 18% with random ones.
+  - **Comeback:** trailing by 3 was under 1%, so it's now 2 (6%).
+  - **Hat Trick stays at 3** (62%), because that's what the name means. It counts as an early achievement and isn't in the sim's skill warnings.
+  - **The rest:** Into the Boards 7%, Shutout 5%, Sudden Death 8%.
+  - All in `config.badges`; the how-to lines read them.
+- 2026-10-16 — **Net-sim test timeouts.** The `--net` tests play whole short matches. Their one-off failure earlier was a timeout (22 s against the 20 s default) while the 1,000-game sim held every CPU, not non-determinism. They now allow 60 s.
+- 2026-10-16 — The custom domain `spellstick.games.darkspace.press` doesn't resolve in public DNS yet (infra/README.md, "Custom domain", still to do). The deploy and its health check use the Azure address, which is fine.

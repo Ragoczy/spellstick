@@ -1,6 +1,9 @@
+import { CreditTracker, emptyCareer, evaluate } from '../src/achievements';
 import { createTeamControllers } from '../src/ai';
 import {
   createMatch,
+  followPlay,
+  startingControl,
   matchRoster,
   stepMatch,
   type AiStyle,
@@ -33,11 +36,22 @@ export function runMatch(
   };
   let liveTicksSinceShot = 0;
 
+  // Achievements (M14): who a person would be steering on each side, as online (control follows play).
+  const credit = new CreditTracker(
+    config,
+    state.players.map((p) => p.team),
+  );
+  const control: [number, number] = [startingControl(state, 0), startingControl(state, 1)];
+
   const inputs: InputCommand[] = [];
   const maxTicks = config.tickHz * 60 * 60; // hard stop: one hour of game time
   while (state.phase !== 'final' && state.tick < maxTicks) {
     for (const p of state.players) inputs[p.id] = controllers[p.id]!.decide(state, p.id);
+    const steered: [number, number] = [control[0], control[1]];
     stepMatch(state, inputs, config);
+    credit.step(state.events, steered);
+    control[0] = followPlay(state, 0, control[0]);
+    control[1] = followPlay(state, 1, control[1]);
     if (state.phase === 'live') liveTicksSinceShot++;
     for (const e of state.events) {
       switch (e.type) {
@@ -126,5 +140,11 @@ export function runMatch(
   stats.teams[0].goals = state.score[0];
   stats.teams[1].goals = state.score[1];
   stats.stuckPlayerIncidents = stuck.incidents;
+  const result = credit.result();
+  for (const side of [0, 1] as const) {
+    for (const id of evaluate(result, side, emptyCareer(), config).unlocked) {
+      stats.achievementUnlocks[id] = (stats.achievementUnlocks[id] ?? 0) + 1;
+    }
+  }
   return stats;
 }

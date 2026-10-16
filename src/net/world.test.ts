@@ -25,6 +25,7 @@ describe('online world', () => {
     const w = createWorld(config, 3, [true, true]);
     const mine: SideInput = { t: 1, move: { x: 0, y: 1 }, aim: { x: 0, y: 0 } };
     const told: number[] = [];
+    const steering = w.control[0];
     const step = stepWorld(
       w,
       [mine, null],
@@ -34,6 +35,8 @@ describe('online world', () => {
     expect(told).not.toContain(w.control[0]);
     expect(told).toContain(w.control[1]);
     expect(step.inputs[w.control[0]]!.move).toEqual({ x: 0, y: 1 });
+    // Who each person steered this tick, for achievements (M14): nobody on the AI's side.
+    expect(step.steered).toEqual([steering, null]);
     expect(w.tick).toBe(1);
   });
 

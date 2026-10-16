@@ -11,6 +11,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-10-16',
+    title: 'Online 1v1, here and in Discord',
+    items: [
+      'Online 1v1 under Play: send a friend the room link, take a seat each, and ready up.',
+      'Or launch Spellstick as an Activity in a Discord voice channel and play from the lobby there.',
+      'Others in the room can watch. If you drop out, the AI plays your side until you come back.',
+    ],
+  },
+  {
     date: '2026-10-15',
     title: 'Choose your spells',
     items: [

@@ -2,11 +2,13 @@ import Phaser from 'phaser';
 import { createDrillControllers, createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS, type TeamId, type TeamInfo } from '../content/teams';
 import {
+  CorrectionLog,
   NetClock,
   Predictor,
   Smoother,
   positionsOf,
   replayShowing,
+  type CorrectionSummary,
   type Positions,
   type SideInput,
   type Snapshot as ServerSnapshot,
@@ -56,6 +58,8 @@ import { PlayerView } from './PlayerView';
 import { captureFrame, REPLAY, ReplayPlayback, ReplayRecorder, type ReplayStep } from './replay';
 import { RETRO, RetroWorld } from './retro';
 import { drawRink } from './RinkView';
+import { RevealedSpells } from './RevealedSpells';
+import { SpellReveals } from './reveals';
 import { SpellBar } from './SpellBar';
 import { WorldView } from './view';
 
@@ -106,6 +110,8 @@ interface OnlinePlay {
   /** The goal whose replay has been shown. */
   replayedGoal: number | null;
   started: boolean;
+  /** Corrections, for the network readout (M12). */
+  corrections: CorrectionLog;
 }
 
 /** A training drill's progress, sent on SCENE_EVENTS.drill: at the start, and after every point or miss. */
@@ -149,6 +155,10 @@ export class MatchScene extends Phaser.Scene {
   private input_!: HumanInput;
   private hud!: Hud;
   private spellBar!: SpellBar;
+  /** Spells shown only once cast: the other team's (right), and home's for a watcher (left). */
+  private readonly reveals = new SpellReveals();
+  private revealedRight!: RevealedSpells;
+  private revealedLeft!: RevealedSpells;
   private rink?: Phaser.GameObjects.Image;
   /** The 8-bit look (the default; off with `?look=classic`). */
   private retro?: RetroWorld;
@@ -208,6 +218,8 @@ export class MatchScene extends Phaser.Scene {
     this.teams = [TEAMS[DEFAULT_HOME], TEAMS[DEFAULT_AWAY]];
     this.hud = new Hud(this, this.config, this.teams);
     this.spellBar = new SpellBar(this, this.config);
+    this.revealedLeft = new RevealedSpells(this, 'left');
+    this.revealedRight = new RevealedSpells(this, 'right');
     if (RETRO) {
       // Everything created from here on is world, drawn at low resolution; the HUD stays crisp.
       this.retro = new RetroWorld(this);
@@ -249,6 +261,8 @@ export class MatchScene extends Phaser.Scene {
     this.hud.setOverlaysEnabled(!demo);
     this.hud.setScoreboardVisible(!training);
     this.spellBar.setVisible(!demo && !watching);
+    this.reveals.reset();
+    this.setRevealsVisible(true);
 
     if (setup.mode === 'online') {
       this.training = null;
@@ -416,6 +430,7 @@ export class MatchScene extends Phaser.Scene {
 
   private onEvent(e: SimEvent): void {
     this.eventCounts[e.type] = (this.eventCounts[e.type] ?? 0) + 1;
+    if (e.type === 'cast') this.reveals.note(e.team, e.spell);
     const human = (team: TeamIndex | null) => team === this.myTeam;
     switch (e.type) {
       case 'faceoffSet':
@@ -541,6 +556,22 @@ export class MatchScene extends Phaser.Scene {
     this.skipRequested = false;
     this.hud.setReplay(true, this.input_.usingPad ? TEXT.replaySkipPad : TEXT.replaySkip);
     this.spellBar.setVisible(false);
+    this.setRevealsVisible(false);
+  }
+
+  /**
+   * The revealed-spells panels (hidden until used): a player sees the other team's, a watcher
+   * both; none in the title demo or training, or while a replay shows.
+   */
+  private setRevealsVisible(on: boolean): void {
+    const mode = this.setup.mode;
+    const watching = mode === 'online' && (this.setup.online?.side ?? null) === null;
+    const shown = on && (mode === 'play' || mode === 'online');
+    const theirs: TeamIndex = this.myTeam === 0 ? 1 : 0;
+    this.revealedRight.setTeam(this.teams[theirs]);
+    this.revealedLeft.setTeam(this.teams[0]);
+    this.revealedRight.setVisible(shown);
+    this.revealedLeft.setVisible(shown && watching);
   }
 
   private endReplay(): void {
@@ -548,6 +579,7 @@ export class MatchScene extends Phaser.Scene {
     this.skipRequested = false;
     this.hud.setReplay(false);
     this.spellBar.setVisible(this.playing || (this.online !== null && this.online.side !== null));
+    this.setRevealsVisible(true);
   }
 
   /** One rendered frame of a replay: advance it, or end it when it's done or skipped. */
@@ -719,6 +751,9 @@ export class MatchScene extends Phaser.Scene {
     this.hud.update(s);
     this.spellBar.showPadLabels(this.input_.usingPad);
     this.spellBar.update(me);
+    // The other team's (a watcher's myTeam is home, so this is away for them).
+    this.revealedRight.update(this.reveals.of(this.myTeam === 0 ? 1 : 0));
+    this.revealedLeft.update(this.reveals.of(0));
     this.drawWards(s.players.filter((p) => p.role === 'goalie' && p.wardTicks > 0).map((p) => p.id));
     this.drawWalls(s.walls);
     this.retro?.render();
@@ -749,6 +784,7 @@ export class MatchScene extends Phaser.Scene {
       prev: null,
       replayedGoal: null,
       started: false,
+      corrections: new CorrectionLog(this.config.online.snapMeters),
     };
   }
 
@@ -809,6 +845,8 @@ export class MatchScene extends Phaser.Scene {
   private applyCorrection(fix: { before: Positions; after: Positions } | null): void {
     const o = this.online!;
     if (!fix) return;
+    const w = o.predictor.world;
+    o.corrections.add(this.time.now, fix.before, fix.after, o.side !== null && w ? w.control[o.side] : null);
     o.smoother.correct(fix.before, fix.after);
     o.prev = null;
   }
@@ -885,20 +923,37 @@ export class MatchScene extends Phaser.Scene {
       seated ? (this.input_.usingPad ? TEXT.replaySkipPad : TEXT.replaySkip) : undefined,
     );
     this.spellBar.setVisible(false);
+    this.setRevealsVisible(false);
   }
 
-  /** Online: this screen's side and clock, and the server's latest tick (tests and the console). */
+  /** Each team's spells seen cast so far this match. */
+  get revealedSpells(): [readonly RunnerSpell[], readonly RunnerSpell[]] {
+    return [this.reveals.of(0), this.reveals.of(1)];
+  }
+
+  /**
+   * Online: this screen's side and clock, the server's latest tick, and how much the
+   * prediction is being corrected (the network readout, tests, and the console).
+   */
   get onlineStatus(): {
     side: TeamIndex | null;
     tick: number | null;
     serverTick: number | null;
     slack: number | null;
     rate: number;
+    corrections: CorrectionSummary;
   } | null {
     const o = this.online;
     if (!o) return null;
     const serverTick = o.predictor.server?.tick ?? null;
-    return { side: o.side, tick: o.clock.tick, serverTick, slack: o.clock.lastSlack, rate: o.clock.rate };
+    return {
+      side: o.side,
+      tick: o.clock.tick,
+      serverTick,
+      slack: o.clock.lastSlack,
+      rate: o.clock.rate,
+      corrections: o.corrections.summary(this.time.now),
+    };
   }
 
   /**
@@ -989,6 +1044,10 @@ function exposeDebugHandle(scene: MatchScene): void {
     },
     get online() {
       return scene.onlineStatus;
+    },
+    /** Each team's spells seen cast so far (hidden until used). */
+    get revealed() {
+      return scene.revealedSpells;
     },
     fastForwardTo: (phase: MatchState['phase']) => scene.fastForwardTo(phase),
     fastForwardToReplay: () => scene.fastForwardToReplay(),

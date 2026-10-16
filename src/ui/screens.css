@@ -436,6 +436,37 @@ body.pad-nav .choice:focus {
 #pad-toast.show {
   opacity: 1;
 }
+
+/* The network readout (M12): N in an online match. */
+#net-readout {
+  position: fixed;
+  top: 56px;
+  left: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-edge);
+  background: rgba(10, 8, 18, 0.82);
+  color: var(--ink);
+  font:
+    12px/1.45 ui-monospace,
+    Consolas,
+    monospace;
+  pointer-events: none;
+  z-index: 15;
+}
+#net-readout[hidden] {
+  display: none;
+}
+#net-readout .net-title {
+  color: var(--gold);
+  margin-bottom: 2px;
+}
+#net-readout th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--ink-dim);
+  padding-right: 10px;
+}
 .tips {
   margin: 14px 0 0;
   padding-left: 18px;

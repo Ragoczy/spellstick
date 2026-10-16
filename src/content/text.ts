@@ -20,6 +20,8 @@ export const TEXT = {
   finalOvertime: 'FINAL (OT)',
   shotClock: 'SHOT',
   replay: 'REPLAY',
+  /** Over a team's spells, shown as "?" until each is cast (Paul, 2026-10-16). */
+  theirSpells: (team: string) => `${team}' spells`,
   replaySkip: 'Click or press Space to skip',
   replaySkipPad: 'Press A to skip',
   /** Online: you skipped the replay; the match waits for the other player (SPEC §11). */

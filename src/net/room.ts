@@ -381,10 +381,11 @@ export class Room {
   }
 
   private sendRoom(conn: number): void {
-    this.port.send(conn, json({ type: 'room', room: this.view() }));
+    this.port.send(conn, json({ type: 'room', room: this.view(this.byConn.get(conn) ?? null) }));
   }
 
-  view(): RoomView {
+  /** The room as `viewer` (a user id) sees it: their own spells, nobody else's. */
+  view(viewer: string | null = null): RoomView {
     const members: MemberView[] = [...this.members.values()]
       .sort((a, b) => a.order - b.order)
       .map((m) => ({
@@ -393,7 +394,7 @@ export class Room {
         avatarUrl: m.user.avatarUrl,
         ready: m.ready,
         online: m.conn !== null,
-        spells: [...m.spells],
+        spells: m.user.id === viewer ? [...m.spells] : null,
       }));
     return {
       code: this.code,

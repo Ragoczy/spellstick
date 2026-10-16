@@ -13,6 +13,8 @@ import {
 /** A dropped connection is retried this many times, this far apart (ms), before giving up. */
 const RETRIES = 5;
 const RETRY_MS = 1500;
+/** The screen pings the server this often (ms) for the network readout (M12). */
+const PING_MS = 1000;
 
 /** What the screens hear from an online session. */
 export interface OnlineHandlers {
@@ -63,6 +65,14 @@ export class OnlineSession {
   room: string | null;
   you: { id: string; name: string } | null = null;
   view: RoomView | null = null;
+  /** Network readout (M12): the latest round trip and a running average (ms), and what's come in. */
+  rttMs: number | null = null;
+  rttAvgMs: number | null = null;
+  bytesIn = 0;
+  snapsIn = 0;
+  private pingTimer = 0;
+  private pingId = 0;
+  private readonly pingsOut = new Map<number, number>();
 
   constructor(
     room: string | null,
@@ -84,6 +94,7 @@ export class OnlineSession {
   }
 
   private onMessage(data: string): void {
+    this.bytesIn += data.length;
     let msg: ServerMessage;
     try {
       msg = JSON.parse(data) as ServerMessage;
@@ -96,6 +107,7 @@ export class OnlineSession {
         this.retries = 0;
         this.you = msg.you;
         this.room = msg.room;
+        this.startPinging();
         this.handlers.welcome(msg.you, msg.room);
         break;
       case 'room':
@@ -103,17 +115,40 @@ export class OnlineSession {
         this.handlers.room(msg.room);
         break;
       case 'snap':
+        this.snapsIn++;
         this.handlers.snapshot(msg.snap, msg.slack);
         break;
       case 'bye':
         this.finish(msg.reason);
         break;
-      case 'pong':
+      case 'pong': {
+        const sent = this.pingsOut.get(msg.id);
+        if (sent === undefined) break;
+        this.pingsOut.delete(msg.id);
+        const rtt = performance.now() - sent;
+        this.rttMs = rtt;
+        this.rttAvgMs = this.rttAvgMs === null ? rtt : this.rttAvgMs * 0.8 + rtt * 0.2;
         break;
+      }
     }
   }
 
+  /** A ping a second while connected, answered by the room (`pong`), for the round trip. */
+  private startPinging(): void {
+    window.clearInterval(this.pingTimer);
+    this.pingsOut.clear();
+    this.pingTimer = window.setInterval(() => {
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      const id = ++this.pingId;
+      // Forget pings that never came back, so the map can't grow.
+      for (const old of this.pingsOut.keys()) if (old < id - 10) this.pingsOut.delete(old);
+      this.pingsOut.set(id, performance.now());
+      this.send({ type: 'ping', id });
+    }, PING_MS);
+  }
+
   private onClose(ws: WebSocket): void {
+    window.clearInterval(this.pingTimer);
     if (ws !== this.ws || this.closedByUs || this.over) return;
     if (this.retries >= RETRIES) {
       this.finish('lost');
@@ -129,6 +164,7 @@ export class OnlineSession {
   private finish(reason: ByeReason | 'lost'): void {
     if (this.over) return;
     this.over = true;
+    window.clearInterval(this.pingTimer);
     this.ws?.close();
     this.handlers.ended(reason);
   }
@@ -144,6 +180,7 @@ export class OnlineSession {
   /** Leaves the room for good. */
   close(): void {
     this.closedByUs = true;
+    window.clearInterval(this.pingTimer);
     this.ws?.close();
   }
 }

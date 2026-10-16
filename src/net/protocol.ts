@@ -14,7 +14,7 @@ import type { OnlineWorld } from './world';
  * WebSocket at /api/online. Bump PROTOCOL_VERSION whenever a message changes shape, so an
  * old page open in someone's browser is told to reload rather than misbehaving.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /**
  * Where the game's page connects: `?room=<code>&v=<PROTOCOL_VERSION>`. The room is a browser
@@ -56,8 +56,11 @@ export interface MemberView {
   ready: boolean;
   /** Connected right now (a seated player who dropped mid-match shows false). */
   online: boolean;
-  /** Their three spells (M13), which their team carries if they play. */
-  spells: RunnerSpell[];
+  /**
+   * Their three spells (M13), which their team carries if they play: sent only to that person
+   * (null for everyone else). Picks stay hidden until cast (Paul, 2026-10-16).
+   */
+  spells: RunnerSpell[] | null;
 }
 
 export interface ResultView {

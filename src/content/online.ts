@@ -38,7 +38,28 @@ export const ONLINE_TEXT = {
   /** M13: each player's three spells, picked in the lobby. */
   spellsLabel: 'Spells',
   changeSpells: 'Change spells',
+  spellsHidden: 'hidden until cast',
   spellsDone: 'Done',
   spellsNote:
-    "Pick three for your team: your teammates carry them too. They go on Q, E, and R (X, Y, and B on a controller) in the order you pick them. Both players see each other's picks.",
+    "Pick three for your team: your teammates carry them too. They go on Q, E, and R (X, Y, and B on a controller) in the order you pick them. The other player can't see them until you cast them.",
+} as const;
+
+/** The network readout (M12): N in an online match. */
+export const NET_READOUT_TEXT = {
+  title: 'Network (N to hide)',
+  ping: 'Ping',
+  ahead: 'Ahead',
+  controls: 'Controls',
+  updates: 'Updates',
+  fixes: 'Corrections',
+  ticks: 'ticks',
+  you: 'you',
+  others: 'others',
+  avg: 'avg',
+  max: 'max',
+  none: 'none',
+  // A slack of 1 is just in time: the server steps tick t+1 next while at t.
+  early: (slack: number, target: number) =>
+    slack >= 1 ? `${slack} ticks early (aim ${target})` : `${1 - slack} ticks late (aim ${target} early)`,
+  snaps: (n: number) => `${n} snap${n === 1 ? '' : 's'}`,
 } as const;

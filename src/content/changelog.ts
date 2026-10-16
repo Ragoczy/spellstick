@@ -12,10 +12,19 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-10-16',
+    title: 'Secret spells, and a network readout',
+    items: [
+      "The other team's spells show as ? in the bottom-right corner until they cast each one.",
+      'Online, your picks stay hidden from the other player until you cast them.',
+      'Online, press N for a network readout: ping, lag, and corrections.',
+    ],
+  },
+  {
+    date: '2026-10-16',
     title: 'Pick your spells online',
     items: [
       'In the online lobby, take a seat and press Change spells to pick your three.',
-      "Both seats show their spells, so you know what you're up against.",
+      'Your AI teammates carry the same three.',
       'Your picks are remembered for single-player too.',
     ],
   },

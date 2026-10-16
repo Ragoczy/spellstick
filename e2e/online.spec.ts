@@ -10,6 +10,7 @@ const SECRET = 'e2e-online-only-secret';
 
 interface OnlineDebug {
   online: { side: number | null; tick: number | null; serverTick: number | null } | null;
+  revealed: [string[], string[]];
   controlledId: number;
   setup: { mode: string };
   state: {
@@ -34,7 +35,13 @@ const debug = (page: Page) =>
   page.evaluate(() => {
     const h = (window as unknown as { __spellstick: OnlineDebug }).__spellstick;
     return JSON.parse(
-      JSON.stringify({ online: h.online, controlledId: h.controlledId, setup: h.setup, state: h.state }),
+      JSON.stringify({
+        online: h.online,
+        revealed: h.revealed,
+        controlledId: h.controlledId,
+        setup: h.setup,
+        state: h.state,
+      }),
     ) as OnlineDebug;
   });
 
@@ -66,11 +73,13 @@ test('two players meet in a room, ready up, and play online', async ({ browser }
   // A seat each, then both ready.
   await ann.locator('.seat').nth(0).getByRole('button', { name: 'Take this seat' }).click();
   await expect(bea.locator('.seat').nth(0)).toContainText('ann-online');
-  await expect(bea.locator('.seat').nth(0)).toContainText(
+  // Picks stay hidden until cast: Ann sees her own three, Bea doesn't.
+  await expect(ann.locator('.seat').nth(0)).toContainText(
     'Spells: Thunderclap, Burst of Speed, Misdirection',
   );
+  await expect(bea.locator('.seat').nth(0)).toContainText('Spells: hidden until cast');
 
-  // Ann picks her three in the lobby (M13); Bea sees them on Ann's seat.
+  // Ann picks her three in the lobby (M13).
   await ann.getByRole('button', { name: 'Change spells' }).click();
   await expect(ann.getByRole('heading', { name: 'Choose your spells' })).toBeVisible();
   for (const id of ['hexShove', 'quickstep', 'bentShot', 'snare', 'blink', 'iceWall']) {
@@ -78,7 +87,9 @@ test('two players meet in a room, ready up, and play online', async ({ browser }
   }
   await ann.getByRole('button', { name: 'Done' }).click();
   await expect(ann.locator('#lobby')).toBeVisible();
-  await expect(bea.locator('.seat').nth(0)).toContainText('Spells: Snare, Blink, Ice Wall');
+  await expect(ann.locator('.seat').nth(0)).toContainText('Spells: Snare, Blink, Ice Wall');
+  await expect(bea.locator('.seat').nth(0)).toContainText('Spells: hidden until cast');
+  await expect(bea.locator('.seat').nth(0)).not.toContainText('Snare');
 
   await bea.locator('.seat').nth(1).getByRole('button', { name: 'Take this seat' }).click();
   await ann.getByRole('button', { name: "I'm ready" }).click();
@@ -115,8 +126,22 @@ test('two players meet in a room, ready up, and play online', async ({ browser }
     expect(theirs.state.players[id]!.pos.y).toBeLessThan(y0 - 1);
   }
 
+  // N: the network readout (M12), with a ping once one has come back.
+  await ann.keyboard.press('n');
+  await expect(ann.locator('#net-readout')).toBeVisible();
+  await expect(ann.locator('#net-readout')).toContainText(/Ping\s*\d+ ms/, { timeout: 5000 });
+  await expect(ann.locator('#net-readout')).toContainText('Corrections');
   await ann.screenshot({ path: 'test-results/online-ann.png' });
   await bea.screenshot({ path: 'test-results/online-bea.png' });
+  await ann.keyboard.press('n');
+  await expect(ann.locator('#net-readout')).toBeHidden();
+
+  // Whatever's been revealed is something that team really carries.
+  const seen = await debug(bea);
+  for (const team of [0, 1] as const) {
+    const carried = runners(seen, team)[0]!;
+    for (const spell of seen.revealed[team]) expect(carried).toContain(spell);
+  }
 
   // Esc: no pause online, just a menu; the match goes on behind it.
   await ann.keyboard.press('Escape');

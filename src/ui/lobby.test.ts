@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RoomView } from '../net';
-import { DEFAULT_LOADOUT } from '../sim';
+import { DEFAULT_LOADOUT, type RunnerSpell } from '../sim';
 import { lobbyStatus } from './screens';
 
 const member = (id: string, ready = false) => ({
@@ -9,7 +9,7 @@ const member = (id: string, ready = false) => ({
   avatarUrl: '',
   ready,
   online: true,
-  spells: [...DEFAULT_LOADOUT],
+  spells: [...DEFAULT_LOADOUT] as RunnerSpell[] | null,
 });
 const room = (over: Partial<RoomView>): RoomView => ({
   code: 'abc123',

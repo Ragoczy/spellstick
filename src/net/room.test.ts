@@ -173,8 +173,10 @@ describe('Room', () => {
     s.room.join(2, BEA);
     s.room.message(1, { type: 'spells', spells: ['snare', 'blink', 'iceWall'] });
     s.ticks(1);
+    // Each person sees only their own picks; the rest stay hidden until cast.
+    expect(s.view(1).members.map((m) => m.spells)).toEqual([['snare', 'blink', 'iceWall'], null]);
     expect(s.view(2).members.map((m) => m.spells)).toEqual([
-      ['snare', 'blink', 'iceWall'],
+      null,
       ['hexShove', 'quickstep', 'bentShot'], // nothing sent yet: the starting three
     ]);
     startMatch(s);

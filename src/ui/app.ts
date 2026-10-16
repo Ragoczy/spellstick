@@ -38,6 +38,7 @@ import {
   trainingPresence,
 } from './discord';
 import { emptyTally, tallyEvents, type TeamTally } from './matchStats';
+import { NetReadout, RateMeter } from './netReadout';
 import { BYE_MESSAGES, OnlineSession, discordRoom, roomFromAddress, roomLink } from './online';
 import { PadMenus } from './padMenus';
 import { reportMailto } from './report';
@@ -64,6 +65,9 @@ import { LessonCard, loadTrainingProgress, saveTrainingProgress } from './traini
 const SELECTION_KEY = 'spellstick.selection';
 /** Training: a finished lesson stays on screen this long before the next one starts (ms). */
 const NEXT_LESSON_DELAY_MS = 1800;
+/** How often the network readout refreshes (ms). */
+const NET_READOUT_MS = 500;
+
 /** Training: how often the lesson card checks which device you're on, for its button names (ms). */
 const LESSON_DEVICE_CHECK_MS = 300;
 
@@ -110,6 +114,11 @@ export class App {
   private roomLinkHandled = false;
   private lastRoomPhase: RoomView['phase'] | null = null;
   private reconnectNotice = false;
+  /** The network readout (M12): N toggles it; it shows only in an online match. */
+  private readonly netReadout: NetReadout;
+  private readonly netRates = new RateMeter();
+  private netOn = false;
+  private netTimer = 0;
 
   constructor(private readonly game: Phaser.Game) {
     this.root = document.createElement('div');
@@ -128,6 +137,7 @@ export class App {
     this.padToast.id = 'pad-toast';
     this.padToast.setAttribute('role', 'status');
     this.root.append(this.padToast);
+    this.netReadout = new NetReadout(this.root);
 
     window.addEventListener('keydown', (e) => this.onKey(e));
     // The focus ring for pad navigation goes away once the mouse or keyboard is back.
@@ -471,6 +481,45 @@ export class App {
   private onKey(e: KeyboardEvent): void {
     if (e.key === 'Escape') this.togglePause();
     else if (e.key === 'm' || e.key === 'M') this.toggleMute();
+    else if (e.key === 'n' || e.key === 'N') this.toggleNetReadout();
+  }
+
+  /** N: the network readout on or off (M12). Kept until a reload; it shows in online matches only. */
+  private toggleNetReadout(): void {
+    this.netOn = !this.netOn;
+    window.clearInterval(this.netTimer);
+    this.netRates.reset();
+    if (this.netOn) {
+      this.refreshNetReadout();
+      this.netTimer = window.setInterval(() => this.refreshNetReadout(), NET_READOUT_MS);
+    } else {
+      this.netReadout.show(false);
+    }
+  }
+
+  private refreshNetReadout(): void {
+    const o = this.online;
+    const status = this.scene.onlineStatus;
+    const inMatch = this.onlineShowing === 'match' || this.onlineShowing === 'menu';
+    if (!o || !status || !inMatch) {
+      this.netReadout.show(false);
+      this.netRates.reset();
+      return;
+    }
+    this.netRates.sample(performance.now(), o.snapsIn, o.bytesIn);
+    this.netReadout.update({
+      watching: status.side === null,
+      rttMs: o.rttMs,
+      rttAvgMs: o.rttAvgMs,
+      aheadTicks: status.tick !== null && status.serverTick !== null ? status.tick - status.serverTick : null,
+      slack: status.slack,
+      targetSlack: this.config.online.inputSlackTicks,
+      snapsPerSecond: this.netRates.snapsPerSecond,
+      kbPerSecond: this.netRates.kbPerSecond,
+      corrections: status.corrections,
+      tickHz: this.config.tickHz,
+    });
+    this.netReadout.show(true);
   }
 
   /** Esc, or Start / Menu on a gamepad. Online there's no pause, only a menu (SPEC §11). */

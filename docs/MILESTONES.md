@@ -171,7 +171,7 @@ Paul: "1v1", and yes to spectators, the AI taking over on disconnect with rejoin
 Paul: "start by logging a per-match network summary from the server."
 - [x] The server logs one anonymous line per online match (`online: match summary {...}`): each seat's round trips, how early its controls arrive and how many come late, ticks played on carried-forward controls, connected share, drops and rejoins; plus snapshot KB/s per screen, the server's step cost, and stalls. A match cut off by a room closing or a restart is logged as abandoned. How to read them: infra/README.md, "Logs".
 - [ ] `npm run sim -- --net` plays matches through the prediction code with simulated lag, jitter, and loss, and reports how often and how far screens are corrected.
-- [ ] A network readout (ping, corrections) on a debug key.
+- [x] A network readout on a debug key (Paul, 2026-10-16: "build the onscreen readout first"). **N** in an online match shows ping, how far the screen runs ahead of the server, how early your controls arrive, updates per second and KB/s, and corrections a second with their size for your witch and everyone else (and snaps). The controls card lists it.
 - [ ] Tune input lead, smoothing, and snapshot rate from playtests across regions.
 
 ## M13 — Online spell picks (Paul, 2026-10-16)
@@ -181,6 +181,10 @@ Paul: "drop the team pick and keep only spell picks in the lobby." The two teams
 - [x] Changing spells takes back Ready; a match keeps the spells it started with.
 - [x] Tests: the room plays each seat's picks, the protocol rejects bad loadouts, and the two-browser Playwright test picks spells in the lobby and checks both teams carry the right three.
 - **Done when:** two players can each pick their three in the lobby, see each other's, and play the match with them.
+- From Paul's M13 playtest (2026-10-16): "Hidden until used."
+  - [x] The lobby shows only your own picks: the server sends each person their own three and nobody else's ("Spells: hidden until cast").
+  - [x] In a match, the other team's three show as "?" in the bottom-right corner, each revealed when that team first casts it. Single-player too; a watcher sees both teams' (home's bottom-left).
+  - [x] Re-gate.
 
 ## Discord touches (planned, was part of M13)
 - [ ] Discord presence for online matches ("Online vs <name>"), and an invite button inside Discord.

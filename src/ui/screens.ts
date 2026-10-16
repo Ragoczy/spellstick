@@ -539,6 +539,7 @@ export function controlsScreen(onDone: () => void, doneLabel = 'Got it'): HTMLEl
     ['Space', padKeys(PAD_BINDINGS.switchPlayer), 'On defense: switch to the teammate nearest the ball'],
     ['Esc', padKeys(PAD_BINDINGS.pause), 'Pause'],
     ['M', padKeys(PAD_BINDINGS.mute), 'Sound on/off'],
+    ['N', '—', 'Online: network readout (ping, corrections) on/off'],
   ];
   return screen(
     'controls',
@@ -767,9 +768,12 @@ export function lobbyScreen(
       if (!who.ready) actions.push(button(ONLINE_TEXT.changeSpells, a.spells, 'btn small'));
       actions.push(button(ONLINE_TEXT.stand, () => a.seat(null), 'btn small'));
     }
-    const spells = who
-      ? `${ONLINE_TEXT.spellsLabel}: ${who.spells.map((id) => SPELLS[id].name).join(', ')}`
-      : '';
+    // Only your own picks come from the server; everyone else's stay hidden until cast.
+    const spells = !who
+      ? ''
+      : who.spells
+        ? `${ONLINE_TEXT.spellsLabel}: ${who.spells.map((id) => SPELLS[id].name).join(', ')}`
+        : `${ONLINE_TEXT.spellsLabel}: ${ONLINE_TEXT.spellsHidden}`;
     return el(
       'div',
       { class: `seat${who?.id === me ? ' mine' : ''}`, style: `border-color:${hex(team.color)}` },

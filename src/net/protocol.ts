@@ -1,4 +1,12 @@
-import { SPELL_POOL, type InputCommand, type SimEvent, type SpellId, type TeamIndex } from '../sim';
+import {
+  SPELL_POOL,
+  isLoadout,
+  type InputCommand,
+  type RunnerSpell,
+  type SimEvent,
+  type SpellId,
+  type TeamIndex,
+} from '../sim';
 import type { OnlineWorld } from './world';
 
 /**
@@ -6,7 +14,7 @@ import type { OnlineWorld } from './world';
  * WebSocket at /api/online. Bump PROTOCOL_VERSION whenever a message changes shape, so an
  * old page open in someone's browser is told to reload rather than misbehaving.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /**
  * Where the game's page connects: `?room=<code>&v=<PROTOCOL_VERSION>`. The room is a browser
@@ -36,6 +44,8 @@ export type Seat = TeamIndex;
 export type ClientMessage =
   | { type: 'seat'; seat: Seat | null }
   | { type: 'ready'; ready: boolean }
+  /** Your three spells (M13), in Q / E / R order: sent on joining and when you change them in the lobby. */
+  | { type: 'spells'; spells: RunnerSpell[] }
   | { type: 'input'; inputs: SideInput[] }
   | { type: 'ping'; id: number };
 
@@ -46,6 +56,8 @@ export interface MemberView {
   ready: boolean;
   /** Connected right now (a seated player who dropped mid-match shows false). */
   online: boolean;
+  /** Their three spells (M13), which their team carries if they play. */
+  spells: RunnerSpell[];
 }
 
 export interface ResultView {
@@ -140,6 +152,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return v.seat === 0 || v.seat === 1 || v.seat === null ? { type: 'seat', seat: v.seat } : null;
     case 'ready':
       return typeof v.ready === 'boolean' ? { type: 'ready', ready: v.ready } : null;
+    case 'spells':
+      return isLoadout(v.spells) ? { type: 'spells', spells: [...v.spells] } : null;
     case 'ping': {
       const id = num(v.id, Number.MAX_SAFE_INTEGER);
       return id === null ? null : { type: 'ping', id };

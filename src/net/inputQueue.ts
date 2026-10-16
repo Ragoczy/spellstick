@@ -23,6 +23,8 @@ export class InputQueue {
   slack: number | null = null;
   /** Ticks in a row with nothing arriving. */
   private missing = 0;
+  /** Whether the last `take` had that tick's own controls (false: carried forward or none). */
+  onTime = false;
 
   constructor(private readonly holdTicks = DEFAULT_HOLD_TICKS) {}
 
@@ -47,6 +49,7 @@ export class InputQueue {
     const got = this.byTick.get(tick);
     for (const t of this.byTick.keys()) if (t <= tick) this.byTick.delete(t);
     let input: SideInput | null = got ? { ...got } : null;
+    this.onTime = got !== undefined;
     if (!got) this.missing++;
     const from = this.latest;
     if (!input && from) {

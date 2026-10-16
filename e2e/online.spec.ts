@@ -12,7 +12,10 @@ interface OnlineDebug {
   online: { side: number | null; tick: number | null; serverTick: number | null } | null;
   controlledId: number;
   setup: { mode: string };
-  state: { phase: string; players: { pos: { x: number; y: number } }[] };
+  state: {
+    phase: string;
+    players: { team: number; role: string; spells: string[]; pos: { x: number; y: number } }[];
+  };
 }
 
 /** A browser window logged in as this Discord user (a session cookie the test server accepts). */
@@ -63,6 +66,20 @@ test('two players meet in a room, ready up, and play online', async ({ browser }
   // A seat each, then both ready.
   await ann.locator('.seat').nth(0).getByRole('button', { name: 'Take this seat' }).click();
   await expect(bea.locator('.seat').nth(0)).toContainText('ann-online');
+  await expect(bea.locator('.seat').nth(0)).toContainText(
+    'Spells: Thunderclap, Burst of Speed, Misdirection',
+  );
+
+  // Ann picks her three in the lobby (M13); Bea sees them on Ann's seat.
+  await ann.getByRole('button', { name: 'Change spells' }).click();
+  await expect(ann.getByRole('heading', { name: 'Choose your spells' })).toBeVisible();
+  for (const id of ['hexShove', 'quickstep', 'bentShot', 'snare', 'blink', 'iceWall']) {
+    await ann.locator(`.spell-choice[data-spell="${id}"]`).click();
+  }
+  await ann.getByRole('button', { name: 'Done' }).click();
+  await expect(ann.locator('#lobby')).toBeVisible();
+  await expect(bea.locator('.seat').nth(0)).toContainText('Spells: Snare, Blink, Ice Wall');
+
   await bea.locator('.seat').nth(1).getByRole('button', { name: 'Take this seat' }).click();
   await ann.getByRole('button', { name: "I'm ready" }).click();
   await expect(bea.locator('.seat').nth(0)).toContainText('Ready');
@@ -75,6 +92,11 @@ test('two players meet in a room, ready up, and play online', async ({ browser }
   const b = await until(bea, (d) => d.setup.mode === 'online' && (d.online?.serverTick ?? 0) > 60, 20_000);
   expect(a.online!.side).toBe(0);
   expect(b.online!.side).toBe(1);
+  // Ann's team carries her picks; Bea's carries the starting three she came in with.
+  const runners = (d: OnlineDebug, team: number) =>
+    d.state.players.filter((p) => p.team === team && p.role === 'runner').map((p) => p.spells);
+  for (const spells of runners(b, 0)) expect(spells).toEqual(['snare', 'blink', 'iceWall']);
+  for (const spells of runners(a, 1)) expect(spells).toEqual(['hexShove', 'quickstep', 'bentShot']);
   // A player's screen settles a few ticks ahead of the latest server state it has.
   await until(ann, (d) => d.online!.tick! >= d.online!.serverTick!, 10_000);
   await until(bea, (d) => d.online!.tick! >= d.online!.serverTick!, 10_000);

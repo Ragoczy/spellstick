@@ -9,6 +9,10 @@ describe('protocol', () => {
     expect(parseClientMessage('{"type":"seat","seat":null}')).toEqual({ type: 'seat', seat: null });
     expect(parseClientMessage('{"type":"ready","ready":true}')).toEqual({ type: 'ready', ready: true });
     expect(parseClientMessage('{"type":"ping","id":7}')).toEqual({ type: 'ping', id: 7 });
+    expect(parseClientMessage('{"type":"spells","spells":["snare","blink","iceWall"]}')).toEqual({
+      type: 'spells',
+      spells: ['snare', 'blink', 'iceWall'],
+    });
     expect(
       parseClientMessage(
         JSON.stringify({ type: 'input', inputs: [{ ...input, cast: 'bentShot', check: true }] }),
@@ -23,6 +27,10 @@ describe('protocol', () => {
       '{"type":"seat","seat":2}',
       '{"type":"ready","ready":"yes"}',
       '{"type":"teleport"}',
+      '{"type":"spells","spells":["snare","blink"]}',
+      '{"type":"spells","spells":["snare","snare","blink"]}',
+      '{"type":"spells","spells":["snare","blink","ward"]}',
+      '{"type":"spells","spells":"snare"}',
       JSON.stringify({ type: 'input', inputs: [{ ...input, cast: 'ward' }] }),
       JSON.stringify({ type: 'input', inputs: [{ ...input, move: { x: 1e9, y: 0 } }] }),
       JSON.stringify({ type: 'input', inputs: [{ ...input, t: 1.5 }] }),

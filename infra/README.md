@@ -43,6 +43,19 @@ az containerapp update -g rg-game-spellstick -n ca-game-spellstick --image acrha
 
 Logs: `az containerapp logs show -g rg-game-spellstick -n ca-game-spellstick --tail 50`
 
+The logs are kept in `log-aiuthor`. Every online match ends with one line,
+`online: match summary {...}` (M12): no names or ids, just how it went over the network. Each
+seat gets its round trips (`rttMs`), how many ticks early its controls arrived (`earlyTicks`;
+negative means late), the share that came too late (`late`), and the share of ticks played on
+carried-forward controls (`held`), with drops and rejoins. The match as a whole gets snapshot
+KB/s per screen (before compression), the server's step cost (`stepMs`), and `stalls`, the
+times the server fell far behind. A match still going when its room closes or the app stops is
+logged with `"end":"abandoned"`. To read the latest:
+
+```bash
+az monitor log-analytics query -w $(az monitor log-analytics workspace show -g rg-aiuthor -n log-aiuthor --query customerId -o tsv) --analytics-query "ContainerAppConsoleLogs_CL | where ContainerAppName_s == 'ca-game-spellstick' and Log_s startswith 'online: match summary' | project TimeGenerated, Log_s | order by TimeGenerated desc | take 20" -o table
+```
+
 ## Settings
 
 The shared Discord settings come straight from Key Vault as Key Vault references; nothing is

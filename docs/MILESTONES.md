@@ -167,13 +167,22 @@ Paul: "1v1", and yes to spectators, the AI taking over on disconnect with rejoin
 - Paul signed off (2026-10-16): "good for now, more tuning later", and online play "works in discord".
   - [x] Add a "What's new" entry for online play and the Discord Activity, now that both are live.
 
-## M12 — Online feel (planned)
+## M12 — Online feel (started 2026-10-16)
+Paul: "start by logging a per-match network summary from the server."
+- [x] The server logs one anonymous line per online match (`online: match summary {...}`): each seat's round trips, how early its controls arrive and how many come late, ticks played on carried-forward controls, connected share, drops and rejoins; plus snapshot KB/s per screen, the server's step cost, and stalls. A match cut off by a room closing or a restart is logged as abandoned. How to read them: infra/README.md, "Logs".
 - [ ] `npm run sim -- --net` plays matches through the prediction code with simulated lag, jitter, and loss, and reports how often and how far screens are corrected.
 - [ ] A network readout (ping, corrections) on a debug key.
 - [ ] Tune input lead, smoothing, and snapshot rate from playtests across regions.
 
-## M13 — Online choices (planned)
-- [ ] Each player picks their team and their three spells (M10's loadouts) in the lobby.
+## M13 — Online spell picks (Paul, 2026-10-16)
+Paul: "drop the team pick and keep only spell picks in the lobby." The two teams differ only in their AI teammates' style, so the seat stays the team (Wyverns home, Ichthyocentaurs away).
+- [x] Each seated player picks their three spells in the lobby (Change spells, the same picker as single-player); their AI teammates carry them too.
+- [x] Both seats show their three to everyone in the room; a screen brings its saved picks into the room, and picks made online are saved for single-player too.
+- [x] Changing spells takes back Ready; a match keeps the spells it started with.
+- [x] Tests: the room plays each seat's picks, the protocol rejects bad loadouts, and the two-browser Playwright test picks spells in the lobby and checks both teams carry the right three.
+- **Done when:** two players can each pick their three in the lobby, see each other's, and play the match with them.
+
+## Discord touches (planned, was part of M13)
 - [ ] Discord presence for online matches ("Online vs <name>"), and an invite button inside Discord.
 
 ## Backlog (post-v1, not started without Paul's go-ahead)

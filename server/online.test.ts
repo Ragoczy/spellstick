@@ -2,7 +2,13 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { PROTOCOL_VERSION, type RoomView, type ServerMessage, type SideInput } from '../src/net/index.js';
+import {
+  PROTOCOL_VERSION,
+  type MatchSummary,
+  type RoomView,
+  type ServerMessage,
+  type SideInput,
+} from '../src/net/index.js';
 import { makeConfig } from '../src/sim/index.js';
 import { attachOnline, type Online } from './online.js';
 
@@ -18,11 +24,19 @@ const config = makeConfig({
 let server: Server;
 let online: Online;
 let base: string;
+/** What the server logged. */
+let logs: string[] = [];
 
 async function start(guests = true): Promise<void> {
   server = createServer((_req, res) => res.end());
+  logs = [];
   online = attachOnline(server, {
-    deps: { env: { SESSION_SECRET: 'test-secret' }, fetch, nowSeconds: () => 1, log: () => {} },
+    deps: {
+      env: { SESSION_SECRET: 'test-secret' },
+      fetch,
+      nowSeconds: () => 1,
+      log: (line) => logs.push(line),
+    },
     guests,
     config,
     timeScale: 10,
@@ -117,6 +131,16 @@ describe('online play over WebSockets', () => {
         true,
       );
     }
+    // One anonymous network summary line for the match (M12).
+    const lines = logs.filter((l) => l.startsWith('online: match summary '));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toMatch(/Guest|guest-/);
+    const summary = JSON.parse(lines[0]!.slice('online: match summary '.length)) as MatchSummary;
+    expect(summary).toMatchObject({ room: 'browser', match: 1, end: 'final', watchersMax: 1, stalls: 0 });
+    expect(summary.ticks).toBeGreaterThan(20 * config.tickHz);
+    expect(summary.seats.map((s) => s.connected)).toEqual([1, 1]);
+    expect(summary.snapshotKBps).toBeGreaterThan(0);
+    expect(summary.stepMs.mean).toBeGreaterThan(0);
     for (const c of [ann, bea, cat]) c.ws.close();
   }, 40_000);
 

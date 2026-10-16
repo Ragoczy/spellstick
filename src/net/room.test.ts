@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeConfig, secondsToTicks, type SimConfig } from '../sim';
+import type { MatchSummary } from './netStats';
 import type { ByeReason, RoomView, ServerMessage } from './protocol';
 import { Room, type RoomUser } from './room';
 
@@ -7,15 +8,17 @@ const ANN: RoomUser = { id: '1', name: 'Ann', avatarUrl: 'a' };
 const BEA: RoomUser = { id: '2', name: 'Bea', avatarUrl: 'b' };
 const CAT: RoomUser = { id: '3', name: 'Cat', avatarUrl: 'c' };
 
-function setup(config: SimConfig = makeConfig()) {
+function setup(config: SimConfig = makeConfig(), code = 'abc123') {
   const sent = new Map<number, ServerMessage[]>();
   const closed: [number, ByeReason][] = [];
+  const summaries: MatchSummary[] = [];
   const room = new Room(
-    'abc123',
+    code,
     config,
     {
       send: (conn, data) => sent.set(conn, [...(sent.get(conn) ?? []), JSON.parse(data) as ServerMessage]),
       close: (conn, reason) => closed.push([conn, reason]),
+      matchOver: (summary) => summaries.push(summary),
     },
     () => 99,
   );
@@ -25,7 +28,7 @@ function setup(config: SimConfig = makeConfig()) {
   const ticks = (n: number) => {
     for (let i = 0; i < n; i++) room.tick();
   };
-  return { room, sent, closed, last, view, ticks, config };
+  return { room, sent, closed, summaries, last, view, ticks, config };
 }
 
 /** Ann (conn 1) home, Bea (conn 2) away, both ready, through the countdown. */
@@ -162,6 +165,85 @@ describe('Room', () => {
     expect(v.lastResult!.score[0]).not.toBe(v.lastResult!.score[1]);
     expect(v.seats).toEqual(['1', null]);
     expect(s.last(1, 'snap')!.snap.world.match.phase).toBe('final');
+  });
+
+  it("plays each seat's own three spells, picked in the lobby (M13)", () => {
+    const s = setup();
+    s.room.join(1, ANN);
+    s.room.join(2, BEA);
+    s.room.message(1, { type: 'spells', spells: ['snare', 'blink', 'iceWall'] });
+    s.ticks(1);
+    expect(s.view(2).members.map((m) => m.spells)).toEqual([
+      ['snare', 'blink', 'iceWall'],
+      ['hexShove', 'quickstep', 'bentShot'], // nothing sent yet: the starting three
+    ]);
+    startMatch(s);
+    const players = s.room.world!.match.players;
+    const runners = (team: number) => players.filter((p) => p.team === team && p.role === 'runner');
+    for (const p of runners(0)) expect(p.spells).toEqual(['snare', 'blink', 'iceWall']);
+    for (const p of runners(1)) expect(p.spells).toEqual(['hexShove', 'quickstep', 'bentShot']);
+    // Mid-match the spells stay as they started.
+    s.room.message(1, { type: 'spells', spells: ['tailwind', 'pinpoint', 'stoneSkin'] });
+    s.ticks(1);
+    expect(s.view(1).members[0]!.spells).toEqual(['snare', 'blink', 'iceWall']);
+  });
+
+  it('changing spells in the lobby takes back Ready', () => {
+    const s = setup();
+    s.room.join(1, ANN);
+    s.room.message(1, { type: 'seat', seat: 0 });
+    s.room.message(1, { type: 'ready', ready: true });
+    s.room.message(1, { type: 'spells', spells: ['tailwind', 'pinpoint', 'stoneSkin'] });
+    s.ticks(1);
+    expect(s.view(1).members[0]).toMatchObject({
+      ready: false,
+      spells: ['tailwind', 'pinpoint', 'stoneSkin'],
+    });
+  });
+
+  it('reports how a finished match went over the network, without names (M12)', () => {
+    const s = setup(makeConfig({ match: { periods: 1, periodSeconds: 20 } }), 'd-1234');
+    s.room.join(3, CAT);
+    startMatch(s);
+    const w = s.room.world!;
+    // Ann's controls: two early, one late.
+    s.room.message(1, {
+      type: 'input',
+      inputs: [
+        { t: w.tick + 3, move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } },
+        { t: w.tick + 4, move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } },
+        { t: w.tick, move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } },
+      ],
+    });
+    s.room.roundTrip(1, 42);
+    s.room.roundTrip(3, 999); // a watcher's round trip isn't a seat's
+    s.ticks(10);
+    s.room.leave(2);
+    s.ticks(10);
+    s.room.join(6, BEA);
+    for (let i = 0; i < 200_000 && s.room.world; i++) s.room.tick();
+    expect(s.summaries).toHaveLength(1);
+    const sum = s.summaries[0]!;
+    expect(sum).toMatchObject({ room: 'discord', match: 1, end: 'final', watchersMax: 1 });
+    expect(sum.seats[0]).toMatchObject({ drops: 0, rejoins: 0, connected: 1, rttMs: { p50: 42 } });
+    expect(sum.seats[0].late).toBeCloseTo(1 / 3, 2);
+    expect(sum.seats[0].earlyTicks.p50).toBe(3);
+    // Ann sent controls for a few ticks only: the rest were carried forward.
+    expect(sum.seats[0].held).toBeGreaterThan(0.9);
+    expect(sum.seats[1]).toMatchObject({ drops: 1, rejoins: 1, rttMs: { p50: null } });
+    expect(sum.seats[1].connected).toBeLessThan(1);
+    expect(sum.snapshotKBps).toBeGreaterThan(0);
+    expect(JSON.stringify(sum)).not.toMatch(/Ann|Bea|Cat|1234/);
+  });
+
+  it('reports a match still going when the room closes as abandoned', () => {
+    const s = setup();
+    startMatch(s);
+    s.ticks(30);
+    s.room.abandon();
+    expect(s.summaries.map((x) => x.end)).toEqual(['abandoned']);
+    expect(s.summaries[0]!.room).toBe('browser');
+    expect(s.room.world).toBeNull();
   });
 
   it('answers pings and counts idle time', () => {

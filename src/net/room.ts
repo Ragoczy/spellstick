@@ -1,7 +1,15 @@
 import { createTeamControllers, type Controller } from '../ai';
 import { DEFAULT_AWAY, DEFAULT_HOME, TEAMS } from '../content/teams';
-import { secondsToTicks, type InputCommand, type SimConfig, type SimEvent } from '../sim';
+import {
+  DEFAULT_LOADOUT,
+  secondsToTicks,
+  type InputCommand,
+  type RunnerSpell,
+  type SimConfig,
+  type SimEvent,
+} from '../sim';
 import { InputQueue } from './inputQueue';
+import { MatchNet, summarize, type MatchEnd, type MatchSummary } from './netStats';
 import type {
   ByeReason,
   ClientMessage,
@@ -24,6 +32,8 @@ export interface RoomUser {
 export interface RoomPort {
   send(conn: number, data: string): void;
   close(conn: number, reason: ByeReason): void;
+  /** A match ended (or was abandoned): its network summary, for the server's log (M12). */
+  matchOver?(summary: MatchSummary): void;
 }
 
 interface Member {
@@ -31,6 +41,8 @@ interface Member {
   /** The connection this person is on, or null (dropped mid-match, seat kept). */
   conn: number | null;
   ready: boolean;
+  /** Their three spells (M13): the starting three until their screen sends its saved picks. */
+  spells: RunnerSpell[];
   /** Arrival order, for listing. */
   order: number;
 }
@@ -44,6 +56,8 @@ interface LiveMatch {
   /** Every witch's command on the last tick that stepped the match. */
   inputs: InputCommand[];
   ticksSinceSnapshot: number;
+  /** How the match is going over the network (M12). */
+  net: MatchNet;
 }
 
 const SEATS = [0, 1] as const;
@@ -85,6 +99,23 @@ export class Room {
     return this.match?.world ?? null;
   }
 
+  /** The live match's network numbers, for the server to add its timings to (M12). */
+  get net(): MatchNet | null {
+    return this.match?.net ?? null;
+  }
+
+  /** A round trip to this connection took `ms` (the server's WebSocket pings). Counted for a seat in a live match. */
+  roundTrip(conn: number, ms: number): void {
+    const seat = this.seatOf(this.byConn.get(conn) ?? '');
+    if (this.match && seat !== null) this.match.net.seat(seat).rttMs.add(ms);
+  }
+
+  /** The room is closing with a match still going: report it as abandoned. */
+  abandon(): void {
+    if (this.match) this.reportMatch('abandoned');
+    this.match = null;
+  }
+
   /** Someone connects. The same person connecting again replaces their old connection (and gets their seat back). */
   join(conn: number, user: RoomUser): void {
     const existing = this.members.get(user.id);
@@ -92,7 +123,14 @@ export class Room {
       this.byConn.delete(existing.conn);
       this.port.close(existing.conn, 'replaced');
     }
-    const member = existing ?? { user, conn: null, ready: false, order: this.order++ };
+    const returning = existing !== undefined && existing.conn === null;
+    const member = existing ?? {
+      user,
+      conn: null,
+      ready: false,
+      spells: [...DEFAULT_LOADOUT],
+      order: this.order++,
+    };
     member.user = user;
     member.conn = conn;
     this.members.set(user.id, member);
@@ -102,6 +140,7 @@ export class Room {
     if (this.match && seat !== null) {
       this.match.queues[seat].clear();
       this.match.world.humans[seat] = true;
+      if (returning) this.match.net.seat(seat).rejoins++;
     }
     this.dirty = true;
     this.sendRoom(conn);
@@ -121,6 +160,7 @@ export class Room {
     if (this.match && seat !== null) {
       this.match.world.humans[seat] = false;
       this.match.queues[seat].clear();
+      this.match.net.seat(seat).drops++;
     } else {
       this.members.delete(id);
       if (seat !== null) this.seats[seat] = null;
@@ -150,10 +190,23 @@ export class Room {
         member.ready = msg.ready;
         this.dirty = true;
         return;
+      case 'spells':
+        // Picked in the lobby; a match in progress keeps the spells it started with.
+        if (this.match) return;
+        member.spells = [...msg.spells];
+        member.ready = false;
+        this.dirty = true;
+        return;
       case 'input': {
         const seat = this.seatOf(id);
         if (!this.match || seat === null) return;
-        for (const input of msg.inputs) this.match.queues[seat].push(input, this.match.world.tick);
+        const now = this.match.world.tick;
+        const net = this.match.net.seat(seat);
+        for (const input of msg.inputs) {
+          this.match.queues[seat].push(input, now);
+          net.early.add(input.t - now);
+          if (input.t <= now) net.lateInputs++;
+        }
         return;
       }
     }
@@ -204,7 +257,8 @@ export class Room {
 
   private startMatch(): void {
     const seed = this.newSeed();
-    const world = createWorld(this.config, seed, [true, true]);
+    const spells = (s: Seat) => this.members.get(this.seats[s]!)?.spells ?? DEFAULT_LOADOUT;
+    const world = createWorld(this.config, seed, [true, true], [spells(0), spells(1)]);
     const level = this.config.online.aiLevel;
     this.match = {
       world,
@@ -222,6 +276,7 @@ export class Room {
       events: [...world.match.events],
       inputs: [],
       ticksSinceSnapshot: 0,
+      net: new MatchNet(),
     };
     this.phase = 'match';
     this.matchNumber++;
@@ -234,15 +289,46 @@ export class Room {
   private stepMatch(live: LiveMatch): void {
     const w = live.world;
     const next = w.tick + 1;
-    const sides = SEATS.map((s) => (w.humans[s] ? live.queues[s].take(next) : null));
+    const present = SEATS.map((s) => w.humans[s]);
+    const sides = SEATS.map((s) => (present[s] ? live.queues[s].take(next) : null));
     const step = stepWorld(w, sides, (id) => live.controllers[id]!.decide(w.match, id), this.config);
     live.events.push(...step.events);
     if (step.inputs.length > 0) live.inputs = step.inputs;
+    this.countTick(live, present);
     const over = w.match.phase === 'final';
     if (++live.ticksSinceSnapshot >= this.config.online.snapshotEveryTicks || over) {
       this.sendSnapshot([...this.byConn.keys()]);
     }
     if (over) this.endMatch(w);
+  }
+
+  /** The network numbers for one stepped tick. `stepped[seat]`: a person had that side. */
+  private countTick(live: LiveMatch, stepped: boolean[]): void {
+    const net = live.net;
+    net.ticks++;
+    net.connectionTicks += this.byConn.size;
+    for (const s of SEATS) {
+      if (!stepped[s]) continue;
+      const seat = net.seat(s);
+      seat.connectedTicks++;
+      if (!live.queues[s].onTime) seat.heldTicks++;
+    }
+    let watchers = 0;
+    for (const id of this.byConn.values()) if (this.seatOf(id) === null) watchers++;
+    if (watchers > net.watchersMax) net.watchersMax = watchers;
+  }
+
+  private reportMatch(end: MatchEnd): void {
+    const live = this.match;
+    if (!live || !this.port.matchOver) return;
+    this.port.matchOver(
+      summarize(live.net, {
+        room: this.code.startsWith('d-') ? 'discord' : 'browser',
+        match: this.matchNumber,
+        end,
+        tickHz: this.config.tickHz,
+      }),
+    );
   }
 
   /**
@@ -265,13 +351,16 @@ export class Room {
     for (const conn of conns) {
       const seat = this.seatOf(this.byConn.get(conn) ?? '');
       const slack = seat === null ? null : live.queues[seat].slack;
-      this.port.send(conn, `{"type":"snap","slack":${slack === null ? 'null' : slack},"snap":${body}}`);
+      const msg = `{"type":"snap","slack":${slack === null ? 'null' : slack},"snap":${body}}`;
+      live.net.snapshotBytes += msg.length;
+      this.port.send(conn, msg);
     }
     // Each report goes out once: a screen must not keep correcting its clock on old news.
     if (everyone) for (const q of live.queues) q.slack = null;
   }
 
   private endMatch(w: OnlineWorld): void {
+    this.reportMatch('final');
     const name = (id: string | null) => (id === null ? null : (this.members.get(id)?.user.name ?? null));
     this.lastResult = {
       score: [w.match.score[0], w.match.score[1]],
@@ -304,6 +393,7 @@ export class Room {
         avatarUrl: m.user.avatarUrl,
         ready: m.ready,
         online: m.conn !== null,
+        spells: [...m.spells],
       }));
     return {
       code: this.code,

@@ -102,7 +102,7 @@ export class App {
   private matchStartedAt = 0;
   /** Online play (SPEC §11): the connection to a room, and what this screen is showing of it. */
   private online: OnlineSession | null = null;
-  private onlineShowing: 'connecting' | 'lobby' | 'match' | 'menu' | 'results' | null = null;
+  private onlineShowing: 'connecting' | 'lobby' | 'spells' | 'match' | 'menu' | 'results' | null = null;
   /** The room's match on screen (its number), and our side in it (null: watching). */
   private onlineMatch: { number: number; side: Seat | null } | null = null;
   private linkCopied = false;
@@ -566,6 +566,8 @@ export class App {
       welcome: (_you, code) => {
         // The address becomes the room's link, so a reload comes back to it.
         if (!IN_DISCORD) window.history.replaceState(null, '', `/?room=${code}`);
+        // Your saved spells (M13) go with you into the room; change them in the lobby.
+        this.online?.send({ type: 'spells', spells: this.selection.spells });
       },
       room: (view) => this.onRoom(view),
       snapshot: (snap, slack) => {
@@ -620,6 +622,7 @@ export class App {
         {
           seat: (seat) => this.click(() => o.send({ type: 'seat', seat }))(),
           ready: (ready) => this.click(() => o.send({ type: 'ready', ready }))(),
+          spells: this.click(() => this.showOnlineSpells()),
           watch: this.click(() => o.view && this.startOnlineMatch(o.view, null)),
           copyLink: this.click(() => {
             if (!link) return;
@@ -636,6 +639,34 @@ export class App {
         { link, copied: this.linkCopied },
       ),
       leave,
+    );
+  }
+
+  /**
+   * Pick your three spells in the lobby (M13): the same screen as single-player, saved with
+   * your team choice so both modes remember the same three. The room keeps going meanwhile.
+   */
+  private showOnlineSpells(): void {
+    const o = this.online;
+    if (!o) return;
+    this.onlineShowing = 'spells';
+    const back = this.click(() => this.showLobby());
+    this.show(
+      spellsScreen(
+        this.selection.spells,
+        {
+          back,
+          start: (spells) => {
+            this.sfx.play('click');
+            this.selection = { ...this.selection, spells };
+            saveSelection(this.selection);
+            o.send({ type: 'spells', spells });
+            this.showLobby();
+          },
+        },
+        { note: ONLINE_TEXT.spellsNote, start: ONLINE_TEXT.spellsDone },
+      ),
+      back,
     );
   }
 

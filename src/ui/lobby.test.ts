@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { RoomView } from '../net';
+import { DEFAULT_LOADOUT } from '../sim';
 import { lobbyStatus } from './screens';
 
-const member = (id: string, ready = false) => ({ id, name: id, avatarUrl: '', ready, online: true });
+const member = (id: string, ready = false) => ({
+  id,
+  name: id,
+  avatarUrl: '',
+  ready,
+  online: true,
+  spells: [...DEFAULT_LOADOUT],
+});
 const room = (over: Partial<RoomView>): RoomView => ({
   code: 'abc123',
   phase: 'lobby',

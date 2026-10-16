@@ -35,4 +35,10 @@ export const ONLINE_TEXT = {
   backToTitle: 'Back to title',
   tryAgain: 'Try again',
   ai: 'AI',
+  /** M13: each player's three spells, picked in the lobby. */
+  spellsLabel: 'Spells',
+  changeSpells: 'Change spells',
+  spellsDone: 'Done',
+  spellsNote:
+    "Pick three for your team: your teammates carry them too. They go on Q, E, and R (X, Y, and B on a controller) in the order you pick them. Both players see each other's picks.",
 } as const;

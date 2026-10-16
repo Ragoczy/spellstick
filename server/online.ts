@@ -9,6 +9,7 @@ import {
   isRoomCode,
   parseClientMessage,
   type ByeReason,
+  type MatchSummary,
   type RoomUser,
   type ServerMessage,
 } from '../src/net/index.js';
@@ -45,15 +46,19 @@ const MAX_ROOM_CONNECTIONS = 24;
 const MAX_ROOMS = 200;
 /** A room with nobody connected closes after this long (s). */
 const ROOM_IDLE_SECONDS = 60;
-/** Ping each connection this often (ms); one that hasn't answered the last ping is gone. */
+/** A connection that hasn't answered a ping for this long (ms) is gone. */
 const HEARTBEAT_MS = 15_000;
+/** Ping each connection this often (ms): the heartbeat, and round trips for the match log (M12). */
+const PING_MS = 2_000;
 const ROOM_CODE_CHARS = 'abcdefghijkmnpqrstuvwxyz23456789';
 
 interface Conn {
   id: number;
   ws: WebSocket;
   room: Room;
-  alive: boolean;
+  /** When the outstanding ping went out (null: none), and when the last answer came (ms). */
+  pingSentAt: number | null;
+  lastPong: number;
   windowStart: number;
   messages: number;
 }
@@ -94,6 +99,8 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
       conns.delete(conn);
       bye(c.ws, reason);
     },
+    // One line per online match: how it went over the network (M12; infra/README.md, "Logs").
+    matchOver: (summary: MatchSummary) => opts.deps.log(`online: match summary ${JSON.stringify(summary)}`),
   };
 
   const newCode = (): string => {
@@ -159,9 +166,22 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
       const room = roomFor(asked ?? newCode());
       if (!room) return bye(ws, 'server');
 
-      const conn: Conn = { id: nextConn++, ws, room, alive: true, windowStart: Date.now(), messages: 0 };
+      const conn: Conn = {
+        id: nextConn++,
+        ws,
+        room,
+        pingSentAt: null,
+        lastPong: performance.now(),
+        windowStart: Date.now(),
+        messages: 0,
+      };
       conns.set(conn.id, conn);
-      ws.on('pong', () => (conn.alive = true));
+      ws.on('pong', () => {
+        const now = performance.now();
+        if (conn.pingSentAt !== null) room.roundTrip(conn.id, now - conn.pingSentAt);
+        conn.pingSentAt = null;
+        conn.lastPong = now;
+      });
       ws.on('message', (data, isBinary) => {
         if (isBinary || !conns.has(conn.id)) return;
         const now = Date.now();
@@ -201,30 +221,42 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
     while (owed >= stepMs && steps < maxSteps) {
       for (const [code, room] of rooms) {
         try {
+          const net = room.net;
+          const start = performance.now();
           room.tick();
+          net?.stepMs.add(performance.now() - start);
         } catch (e) {
           opts.deps.log(`online: a room failed and was closed (${(e as Error).name})`);
           rooms.delete(code);
           continue;
         }
-        if (room.idleTicks > ROOM_IDLE_SECONDS * config.tickHz) rooms.delete(code);
+        if (room.idleTicks > ROOM_IDLE_SECONDS * config.tickHz) {
+          room.abandon();
+          rooms.delete(code);
+        }
       }
       owed -= stepMs;
       steps++;
     }
-    if (steps >= maxSteps) owed = 0; // fell far behind: drop the backlog
+    if (steps >= maxSteps) {
+      owed = 0; // fell far behind: drop the backlog
+      for (const room of rooms.values()) if (room.net) room.net.stalls++;
+    }
   }, 4);
 
   const heartbeat = setInterval(() => {
+    const now = performance.now();
     for (const c of conns.values()) {
-      if (!c.alive) {
+      if (now - c.lastPong > HEARTBEAT_MS) {
         c.ws.terminate();
         continue;
       }
-      c.alive = false;
-      c.ws.ping();
+      if (c.pingSentAt === null) {
+        c.pingSentAt = now;
+        c.ws.ping();
+      }
     }
-  }, HEARTBEAT_MS);
+  }, PING_MS);
 
   return {
     rooms,
@@ -232,6 +264,7 @@ export function attachOnline(server: Server, opts: OnlineOptions): Online {
       clearInterval(loop);
       clearInterval(heartbeat);
       server.off('upgrade', onUpgrade);
+      for (const room of rooms.values()) room.abandon();
       for (const c of conns.values()) bye(c.ws, 'server');
       conns.clear();
       rooms.clear();

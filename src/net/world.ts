@@ -8,6 +8,7 @@ import {
   switchControl,
   type InputCommand,
   type MatchState,
+  type RunnerSpell,
   type SimConfig,
   type SimEvent,
 } from '../sim';
@@ -43,8 +44,14 @@ export interface ReplayHold {
   skipped: [boolean, boolean];
 }
 
-export function createWorld(config: SimConfig, seed: number, humans: [boolean, boolean]): OnlineWorld {
-  const match = createMatch(config, seed, matchRoster(config), { start: 'faceoff' });
+/** `loadouts`: each side's three spells (M13); the starting three if left out. */
+export function createWorld(
+  config: SimConfig,
+  seed: number,
+  humans: [boolean, boolean],
+  loadouts?: readonly [readonly RunnerSpell[], readonly RunnerSpell[]],
+): OnlineWorld {
+  const match = createMatch(config, seed, matchRoster(config), { start: 'faceoff', loadouts });
   return {
     tick: 0,
     match,

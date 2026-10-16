@@ -4,3 +4,4 @@ export * from './inputQueue';
 export * from './predictor';
 export * from './clock';
 export * from './room';
+export * from './netStats';

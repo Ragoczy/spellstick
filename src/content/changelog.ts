@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-10-16',
+    title: 'Pick your spells online',
+    items: [
+      'In the online lobby, take a seat and press Change spells to pick your three.',
+      "Both seats show their spells, so you know what you're up against.",
+      'Your picks are remembered for single-player too.',
+    ],
+  },
+  {
+    date: '2026-10-16',
     title: 'Online 1v1, here and in Discord',
     items: [
       'Online 1v1 under Play: send a friend the room link, take a seat each, and ready up.',

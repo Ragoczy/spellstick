@@ -437,6 +437,11 @@ const SPELL_KEYS = ['Q', 'E', 'R'] as const;
 export function spellsScreen(
   initial: readonly RunnerSpell[],
   actions: { start(spells: RunnerSpell[]): void; back(): void },
+  /** Online (M13), the same screen picks your spells in the lobby, with its own words. */
+  words: { note: string; start: string } = {
+    note: 'Pick three for your team. They go on Q, E, and R (X, Y, and B on a controller) in the order you pick them.',
+    start: 'Start match',
+  },
 ): HTMLElement {
   const slots: (RunnerSpell | null)[] = Array.from({ length: LOADOUT_SIZE }, (_, i) => initial[i] ?? null);
   const slotName = (i: number) => `${SPELL_KEYS[i]} / ${PAD_LABEL[PAD_BINDINGS.spells[i]!]}`;
@@ -491,11 +496,7 @@ export function spellsScreen(
   const node = screen(
     'spells',
     el('h2', {}, 'Choose your spells'),
-    el(
-      'p',
-      { class: 'settings-note' },
-      'Pick three for your team. They go on Q, E, and R (X, Y, and B on a controller) in the order you pick them.',
-    ),
+    el('p', { class: 'settings-note' }, words.note),
     summary,
     el('div', { class: 'choices spell-grid' }, ...SPELL_POOL.map(choice)),
     hint,
@@ -504,7 +505,7 @@ export function spellsScreen(
       { class: 'actions' },
       button('Back', actions.back),
       button(
-        'Start match',
+        words.start,
         () => {
           if (slots.some((s) => s === null)) {
             hint.textContent = 'Pick three spells.';
@@ -727,14 +728,17 @@ export function resultsScreen(
 export interface LobbyActions {
   seat(seat: Seat | null): void;
   ready(ready: boolean): void;
+  /** Open the spell picker (M13). */
+  spells(): void;
   watch(): void;
   copyLink(): void;
   leave(): void;
 }
 
 /**
- * The online lobby (SPEC §11): the two seats (home Wyverns, away Ichthyocentaurs), Ready,
- * everyone watching, and the room link to share (in a browser) or a note (inside Discord).
+ * The online lobby (SPEC §11): the two seats (home Wyverns, away Ichthyocentaurs) with each
+ * player's three spells (M13), Ready, everyone watching, and the room link to share (in a
+ * browser) or a note (inside Discord).
  */
 export function lobbyScreen(
   room: RoomView,
@@ -753,23 +757,27 @@ export function lobbyScreen(
     const name = who
       ? `${who.name}${who.id === me ? ` ${ONLINE_TEXT.you}` : ''}${who.online ? '' : ` (${ONLINE_TEXT.dropped})`}`
       : ONLINE_TEXT.empty;
-    let action: HTMLButtonElement | null = null;
+    const actions: HTMLButtonElement[] = [];
     if (!inMatch && !who) {
-      action = button(
-        ONLINE_TEXT.sit,
-        () => a.seat(seat),
-        mySeat === null ? 'btn small primary' : 'btn small',
+      actions.push(
+        button(ONLINE_TEXT.sit, () => a.seat(seat), mySeat === null ? 'btn small primary' : 'btn small'),
       );
     } else if (!inMatch && who?.id === me) {
-      action = button(ONLINE_TEXT.stand, () => a.seat(null), 'btn small');
+      // Spells change only while not ready (changing them takes Ready back anyway).
+      if (!who.ready) actions.push(button(ONLINE_TEXT.changeSpells, a.spells, 'btn small'));
+      actions.push(button(ONLINE_TEXT.stand, () => a.seat(null), 'btn small'));
     }
+    const spells = who
+      ? `${ONLINE_TEXT.spellsLabel}: ${who.spells.map((id) => SPELLS[id].name).join(', ')}`
+      : '';
     return el(
       'div',
       { class: `seat${who?.id === me ? ' mine' : ''}`, style: `border-color:${hex(team.color)}` },
       el('h3', { style: `color:${hex(team.color)}` }, team.name),
       el('p', { class: 'seat-name' }, name),
+      el('p', { class: 'seat-spells' }, spells),
       el('p', { class: 'seat-ready' }, who?.ready ? `✓ ${ONLINE_TEXT.readyMark}` : ''),
-      ...(action ? [action] : []),
+      ...actions,
     );
   };
 
